@@ -1,8 +1,10 @@
-# Created by venv; see https://docs.python.org/3/library/venv.html
-# Python virtual environment
-*PlexeAPI/
-*bin/
-*include/
-*lib/
-*pyvenv.cfg
-*build/
+# Virtual environment directories and files
+bin/
+include/
+lib/
+pyvenv.cfg
+
+# Python packaging artifacts
+build/
+*.egg-info/
+dist/
