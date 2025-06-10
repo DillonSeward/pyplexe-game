@@ -1,6 +1,8 @@
 # Created by venv; see https://docs.python.org/3/library/venv.html
 # Python virtual environment
-bin/
-include/
-lib/
-pyvenv.cfg
+*PlexeAPI/
+*bin/
+*include/
+*lib/
+*pyvenv.cfg
+*build/
