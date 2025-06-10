@@ -1,28 +1,11 @@
-#
-# Copyright (c) 2018-2022 Michele Segata <segata@ccs-labs.org>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Lesser General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Lesser General Public License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License
-# along with this program.  If not, see http://www.gnu.org/licenses/.
-#
-
 import sys
 import os
 import random
 import math
 from typing import Dict, Tuple, List, Optional
 
-if 'SUMO_HOME' in os.environ:
-    tools = os.path.join(os.environ['SUMO_HOME'], 'tools')
+if "SUMO_HOME" in os.environ:
+    tools = os.path.join(os.environ["SUMO_HOME"], "tools")
     sys.path.append(tools)
 else:
     sys.exit("please declare environment variable 'SUMO_HOME'")
@@ -34,11 +17,13 @@ from plexe import POS_X, POS_Y, ENGINE_MODEL_REALISTIC
 
 class Vehicle:
     # MAY NEED TO STORE LEADER INFORMATION
-    def __init__(self, id: str, front: Optional[str] = None, back: Optional[str] = None):
+    def __init__(
+        self, id: str, front: Optional[str] = None, back: Optional[str] = None
+    ):
         self.id = id
         self.front = front
         self.back = back
-                   
+
 
 class Topology:
     def __init__(self):
@@ -95,7 +80,7 @@ class Topology:
         #     v = self.platoons[platoon_id][1][i]
         #     self.remove_vehicle(v.id)
         #     self.add_vehicle(sub_platoon, v)
-            
+
     def reset_leaders(self):
         while self.temporaries:
             sub_id, og_id = self.temporaries.popitem()
@@ -106,7 +91,7 @@ class Topology:
 
     def create_platoon(self, leader_id: str) -> int:
         id = self.platoons.__len__()
-        self.platoons[id] = (leader_id, []) 
+        self.platoons[id] = (leader_id, [])
         return id
 
     def add_vehicle(self, platoon: int, vehicle: Vehicle):
@@ -114,20 +99,20 @@ class Topology:
             self.platoons[platoon] = ("", [])
         leader, vehicles = self.platoons[platoon]
         vehicles.append(vehicle)
- 
+
     def get_leader(self, vehicle_id: str):
         for platoon_id, (leader, vehicles) in self.platoons.items():
             for i, v in enumerate(vehicles):
                 if v.id == vehicle_id:
                     del vehicles[i]
-                    return  leader
+                    return leader
 
-    def remove_vehicle(self, vehicle_id: str):
+    def remove_vehicle(self, vehicle_id: str) -> Vehicle:
         for platoon_id, (leader, vehicles) in self.platoons.items():
             for i, v in enumerate(vehicles):
                 if v.id == vehicle_id:
                     del vehicles[i]
-                    return
+                    return v
                     # return  (platoon_id, v)
 
     def get_vehicle(self, vehicle_id: str) -> Tuple[int, Vehicle]:
@@ -135,53 +120,95 @@ class Topology:
             for i, v in enumerate(vehicles):
                 if v.id == vehicle_id:
                     return (platoon_id, v)
- 
+
+
+def init_topology(n_vehicles_per_platoon: List[int]) -> Topology:
+    topology = Topology()
+    vehicles_count = 0
+    n_platoons = n_vehicles_per_platoon.__len__()
+
+    for platoon_id in range(n_platoons):
+        n = n_vehicles_per_platoon[platoon_id]
+        for i in range(n):
+            vid = "v.%d" % vehicles_count
+            vehicle = Vehicle(vid)
+            vehicles_count += 1
+            if i == 0:
+                topology.create_platoon(vid)
+            if i > 0:
+                front = "v.%d" % (i - 1)
+                print("FRONT: ", front)
+                vehicle.front = front
+            if i < n - 1:
+                back = "v.%d" % (i + 1)
+                print("BACK: ", back)
+                vehicle.back = back
+
+            topology.add_vehicle(platoon_id, vehicle)
+
+    return topology
+
 
 class LeaveManeuver:
-    def __init__(self, leader: str, n_vehicles : int, leave_position : int):
+    def __init__(self, leader: str, n_vehicles: int, leave_position: int):
         self.front_leave = "v.%d" % (leave_position - 1)
         self.behind_leave = "v.%d" % leave_position
         self.leaver = "v.%d" % leave_position
 
+
 # lane change state bits
 bits = {
-    0: 'LCA_NONE',
-    1 << 0: 'LCA_STAY',
-    1 << 1: 'LCA_LEFT',
-    1 << 2: 'LCA_RIGHT',
-    1 << 3: 'LCA_STRATEGIC',
-    1 << 4: 'LCA_COOPERATIVE',
-    1 << 5: 'LCA_SPEEDGAIN',
-    1 << 6: 'LCA_KEEPRIGHT',
-    1 << 7: 'LCA_TRACI',
-    1 << 8: 'LCA_URGENT',
-    1 << 9: 'LCA_BLOCKED_BY_LEFT_LEADER',
-    1 << 10: 'LCA_BLOCKED_BY_LEFT_FOLLOWER',
-    1 << 11: 'LCA_BLOCKED_BY_RIGHT_LEADER',
-    1 << 12: 'LCA_BLOCKED_BY_RIGHT_FOLLOWER',
-    1 << 13: 'LCA_OVERLAPPING',
-    1 << 14: 'LCA_INSUFFICIENT_SPACE',
-    1 << 15: 'LCA_SUBLANE',
-    1 << 16: 'LCA_AMBLOCKINGLEADER',
-    1 << 17: 'LCA_AMBLOCKINGFOLLOWER',
-    1 << 18: 'LCA_MRIGHT',
-    1 << 19: 'LCA_MLEFT',
-    1 << 30: 'LCA_UNKNOWN'
+    0: "LCA_NONE",
+    1 << 0: "LCA_STAY",
+    1 << 1: "LCA_LEFT",
+    1 << 2: "LCA_RIGHT",
+    1 << 3: "LCA_STRATEGIC",
+    1 << 4: "LCA_COOPERATIVE",
+    1 << 5: "LCA_SPEEDGAIN",
+    1 << 6: "LCA_KEEPRIGHT",
+    1 << 7: "LCA_TRACI",
+    1 << 8: "LCA_URGENT",
+    1 << 9: "LCA_BLOCKED_BY_LEFT_LEADER",
+    1 << 10: "LCA_BLOCKED_BY_LEFT_FOLLOWER",
+    1 << 11: "LCA_BLOCKED_BY_RIGHT_LEADER",
+    1 << 12: "LCA_BLOCKED_BY_RIGHT_FOLLOWER",
+    1 << 13: "LCA_OVERLAPPING",
+    1 << 14: "LCA_INSUFFICIENT_SPACE",
+    1 << 15: "LCA_SUBLANE",
+    1 << 16: "LCA_AMBLOCKINGLEADER",
+    1 << 17: "LCA_AMBLOCKINGFOLLOWER",
+    1 << 18: "LCA_MRIGHT",
+    1 << 19: "LCA_MLEFT",
+    1 << 30: "LCA_UNKNOWN",
 }
 
 
 def add_vehicle(plexe, vid, position, lane, speed, vtype="vtypeauto"):
     if plexe.version[0] >= 1:
-        traci.vehicle.add(vid, "platoon_route", departPos=str(position),
-                          departSpeed=str(speed), departLane=str(lane),
-                          typeID=vtype)
+        traci.vehicle.add(
+            vid,
+            "platoon_route",
+            departPos=str(position),
+            departSpeed=str(speed),
+            departLane=str(lane),
+            typeID=vtype,
+        )
     else:
-        traci.vehicle.add(vid, "platoon_route", pos=position, speed=speed,
-                          lane=lane, typeID=vtype)
+        traci.vehicle.add(
+            vid, "platoon_route", pos=position, speed=speed, lane=lane, typeID=vtype
+        )
 
 
-def add_platooning_vehicle(plexe, vid, position, lane, speed, cacc_spacing,
-                           real_engine=False, vtype="vtypeauto"):
+def add_platooning_vehicle(
+    plexe,
+    vid,
+    position,
+    lane,
+    speed,
+    cacc_spacing,
+    real_engine=False,
+    vtype="vtypeauto",
+):
     """
     Adds a vehicle to the simulation
     :param plexe: API instance
@@ -202,9 +229,10 @@ def add_platooning_vehicle(plexe, vid, position, lane, speed, cacc_spacing,
         plexe.set_engine_model(vid, ENGINE_MODEL_REALISTIC)
         plexe.set_vehicles_file(vid, "vehicles.xml")
         plexe.set_vehicle_model(vid, "alfa-147")
-    traci.vehicle.setColor(vid, (random.uniform(0, 255),
-                                 random.uniform(0, 255),
-                                 random.uniform(0, 255), 255))
+    traci.vehicle.setColor(
+        vid,
+        (random.uniform(0, 255), random.uniform(0, 255), random.uniform(0, 255), 255),
+    )
 
 
 def get_distance(plexe, v1, v2):
@@ -217,8 +245,13 @@ def get_distance(plexe, v1, v2):
     """
     v1_data = plexe.get_vehicle_data(v1)
     v2_data = plexe.get_vehicle_data(v2)
-    return math.sqrt((v1_data[POS_X] - v2_data[POS_X])**2 +
-                     (v1_data[POS_Y] - v2_data[POS_Y])**2) - 4
+    return (
+        math.sqrt(
+            (v1_data[POS_X] - v2_data[POS_X]) ** 2
+            + (v1_data[POS_Y] - v2_data[POS_Y]) ** 2
+        )
+        - 4
+    )
 
 
 def communicate(plexe, topology: Topology):
@@ -234,7 +267,7 @@ def communicate(plexe, topology: Topology):
     for platoon_id, (leader, vehicles) in topology.platoons.items():
         # get data about platoon leader
         ld = plexe.get_vehicle_data(leader)
-        for v in vehicles: 
+        for v in vehicles:
             # pass leader vehicle data to CACC
             plexe.set_leader_vehicle_data(v.id, ld)
             # pass data to the fake CACC as well, in case it's needed
@@ -260,7 +293,7 @@ def start_sumo(config_file, already_running, gui=True, sublane=True):
         arguments = ["--lanechange.duration", "3", "-c"]
     else:
         arguments = ["-c"]
-    sumo_cmd = [sumolib.checkBinary('sumo-gui' if gui else 'sumo')]
+    sumo_cmd = [sumolib.checkBinary("sumo-gui" if gui else "sumo")]
     arguments.append(config_file)
     if already_running:
         traci.load(arguments)
