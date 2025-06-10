@@ -9,17 +9,17 @@ alias deactivate 'test $?_OLD_VIRTUAL_PATH != 0 && setenv PATH "$_OLD_VIRTUAL_PA
 # Unset irrelevant variables.
 deactivate nondestructive
 
-setenv VIRTUAL_ENV /Users/dillonseward/Desktop/Projects/plexe-pyapi
+setenv VIRTUAL_ENV /Users/dillonseward/Desktop/Projects/SUMO-Platoon/pyplexe-game
 
 set _OLD_VIRTUAL_PATH="$PATH"
 setenv PATH "$VIRTUAL_ENV/"bin":$PATH"
-setenv VIRTUAL_ENV_PROMPT plexe-pyapi
+setenv VIRTUAL_ENV_PROMPT pyplexe-game
 
 
 set _OLD_VIRTUAL_PROMPT="$prompt"
 
 if (! "$?VIRTUAL_ENV_DISABLE_PROMPT") then
-    set prompt = "("plexe-pyapi") $prompt:q"
+    set prompt = "("pyplexe-game") $prompt:q"
 endif
 
 alias pydoc python -m pydoc
