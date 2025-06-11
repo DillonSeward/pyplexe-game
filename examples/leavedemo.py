@@ -1,29 +1,20 @@
 #!/usr/bin/env python
-#
-# Copyright (c) 2018-2022 Michele Segata <segata@ccs-labs.org>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Lesser General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Lesser General Public License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License
-# along with this program.  If not, see http://www.gnu.org/licenses/.
-#
-
 import os
 import sys
 import random
-from utils import add_platooning_vehicle, communicate, get_distance, \
-    start_sumo, running
 
-if 'SUMO_HOME' in os.environ:
-    tools = os.path.join(os.environ['SUMO_HOME'], 'tools')
+from utils import (
+    communicate,
+    get_distance,
+    start_sumo,
+    running,
+    init_simulation,
+    init_topology,
+    open_gap,
+)
+
+if "SUMO_HOME" in os.environ:
+    tools = os.path.join(os.environ["SUMO_HOME"], "tools")
     sys.path.append(tools)
 else:
     sys.exit("please declare environment variable 'SUMO_HOME'")
@@ -48,103 +39,11 @@ COMPLETED = 3
 
 # maneuver actors
 LEADER = "v.0"
-N_VEHICLES = 20
-LEAVE_POSITION = N_VEHICLES / 2
+N_VEHICLES = 8
+LEAVE_POSITION = N_VEHICLES // 2
 FRONT_LEAVE = "v.%d" % (LEAVE_POSITION - 1)
 BEHIND_LEAVE = "v.%d" % LEAVE_POSITION
 LEAVER = "v.%d" % LEAVE_POSITION
-
-
-def add_vehicles(plexe, n, real_engine=False):
-    """
-    Adds a platoon of n vehicles to the simulation, plus an additional one
-    farther away that wants to join the platoon
-    :param plexe: API instance
-    :param n: number of vehicles of the platoon
-    :param real_engine: set to true to use the realistic engine model,
-    false to use a first order lag model
-    :return: returns the topology of the platoon, i.e., a dictionary which
-    indicates, for each vehicle, who is its leader and who is its front
-    vehicle. The topology can the be used by the data exchange logic to
-    automatically fetch data from leading and front vehicle to feed the CACC
-    """
-    # add a platoon of n vehicles
-    topology = {}
-    for i in range(n):
-        vid = "v.%d" % i
-        add_platooning_vehicle(plexe, vid, (n - i + 1) * (DISTANCE + LENGTH) +
-                               50, 0, SPEED, DISTANCE, real_engine)
-        plexe.set_fixed_lane(vid, 0, safe=False)
-        traci.vehicle.setSpeedMode(vid, 0)
-        if i == 0:
-            plexe.set_active_controller(vid, ACC)
-        else:
-            plexe.set_active_controller(vid, CACC)
-        if i > 0:
-            topology[vid] = {"front": "v.%d" % (i - 1), "leader": LEADER}
-    # add a vehicle that wants to join the platoon
-    return topology
-
-
-def get_in_position(plexe, jid, fid, topology):
-    """
-    Makes the joining vehicle get close to the join position. This is done by
-    changing the topology and setting the leader and the front vehicle for
-    the joiner. In addition, we increase the cruising speed and we switch to
-    the "fake" CACC, which uses a given GPS distance instead of the radar
-    distance to compute the control action
-    :param plexe: API instance
-    :param jid: id of the joiner
-    :param fid: id of the vehicle that will become the predecessor of the joiner
-    :param topology: the current platoon topology
-    :return: the modified topology
-    """
-    topology[jid] = {"leader": LEADER, "front": fid}
-    plexe.set_cc_desired_speed(jid, SPEED + 15)
-    plexe.set_active_controller(jid, FAKED_CACC)
-    return topology
-
-
-def open_gap(plexe, vid, jid, topology, n):
-    """
-    Makes the vehicle that will be behind the joiner open a gap to let the
-    joiner in. This is done by creating a temporary platoon, i.e., setting
-    the leader of all vehicles behind to the one that opens the gap and then
-    setting the front vehicle of the latter to be the joiner. To properly
-    open the gap, the vehicle leaving space switches to the "fake" CACC,
-    to consider the GPS distance to the joiner
-    :param plexe: API instance
-    :param vid: vehicle that should open the gap
-    :param jid: id of the joiner
-    :param topology: the current platoon topology
-    :param n: total number of vehicles currently in the platoon
-    :return: the modified topology
-    """
-    index = int(vid.split(".")[1])
-    for i in range(index + 1, n):
-        # temporarily change the leader
-        topology["v.%d" % i]["leader"] = vid
-    # the front vehicle if the vehicle opening the gap is the joiner
-    topology[vid]["front"] = jid
-    plexe.set_active_controller(vid, FAKED_CACC)
-    plexe.set_path_cacc_parameters(vid, distance=JOIN_DISTANCE)
-    return topology
-
-
-def reset_leader(vid, topology, n):
-    """
-    After the maneuver is completed, the vehicles behind the one that opened
-    the gap, reset the leader to the initial one
-    :param vid: id of the vehicle that let the joiner in
-    :param topology: the current platoon topology
-    :param n: total number of vehicles in the platoon (before the joiner)
-    :return: the modified topology
-    """
-    index = int(vid.split(".")[1])
-    for i in range(index + 1, n):
-        # restore the real leader
-        topology["v.%d" % i]["leader"] = LEADER
-    return topology
 
 
 def main(demo_mode, real_engine, setter=None):
@@ -154,8 +53,14 @@ def main(demo_mode, real_engine, setter=None):
     plexe = Plexe()
     step = 0
     state = IN_PLATOON
-    while running(demo_mode, step, 6000):
+    topology = init_topology([N_VEHICLES])
+    print(topology)
 
+    leave_pos = 4
+    leaver = topology.platoons[0][1][leave_pos]
+    print("GOT LEAVER: ", leaver.id)
+
+    while running(demo_mode, step, 6000):
         # when reaching 60 seconds, reset the simulation when in demo_mode
         if demo_mode and step == 6000:
             start_sumo("cfg/freeway.sumo.cfg", True)
@@ -167,7 +72,7 @@ def main(demo_mode, real_engine, setter=None):
 
         if step == 0:
             # create vehicles and track the joiner
-            topology = add_vehicles(plexe, N_VEHICLES, real_engine)
+            init_simulation(plexe, topology, DISTANCE, LENGTH, SPEED, real_engine)
             traci.gui.trackVehicle("View #0", LEAVER)
             traci.gui.setZoom("View #0", 20000)
         if step % 10 == 1:
@@ -175,20 +80,40 @@ def main(demo_mode, real_engine, setter=None):
             communicate(plexe, topology)
         if state == IN_PLATOON and step == 100:
             # at 1 second, let the joiner get closer to the platoon
-            # topology = get_in_position(plexe, LEAVER, FRONT_LEAVE, topology)
-            topology = open_gap(plexe, BEHIND_LEAVE, LEAVER, topology, N_VEHICLES)
-            topology = open_gap(plexe, LEAVER, FRONT_LEAVE, topology, N_VEHICLES)
+            topology = open_gap(
+                plexe, leaver.back, leaver.id, JOIN_DISTANCE, topology, N_VEHICLES
+            )
+            topology = open_gap(
+                plexe, leaver.id, leaver.front, JOIN_DISTANCE, topology, N_VEHICLES
+            )
             state = OPENING_GAP
+            print(state)
+
         if state == OPENING_GAP:
-            if get_distance(plexe, BEHIND_LEAVE, FRONT_LEAVE) < JOIN_DISTANCE * 2 + LENGTH:
-                plexe.set_active_controller(LEAVER, ACC)
-                plexe.set_fixed_lane(LEAVER, 1, safe=False)
-                state = LEAVING
+            plexe.set_active_controller(leaver.id, ACC)
+            plexe.set_fixed_lane(leaver.id, 1, safe=False)
+            state = LEAVING
+            print(state)
+
         if state == LEAVING:
-            if get_distance(plexe, BEHIND_LEAVE, FRONT_LEAVE) < JOIN_DISTANCE + 1:
-                state == COMPLETED
-            
-       
+            if get_distance(plexe, leaver.back, leaver.front) > (JOIN_DISTANCE + 1):
+                _, back = topology.get_vehicle(leaver.back)
+                _, front = topology.get_vehicle(leaver.back)
+                back.front = front.id
+                front.back = back.id
+
+                # swithing back control scheme
+                plexe.set_active_controller(back.id, CACC)
+                plexe.set_active_controller(front.id, CACC)
+                plexe.set_path_cacc_parameters(back.id, DISTANCE)
+                plexe.set_path_cacc_parameters(front.id, DISTANCE)
+
+                state = COMPLETED
+                print(state)
+
+        if state == COMPLETED:
+            topology.reset_leaders()
+
         if real_engine and setter is not None:
             # if we are running with the dashboard, update its values
             tracked_id = traci.gui.getTrackedVehicle("View #0")

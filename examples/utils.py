@@ -12,7 +12,7 @@ else:
 
 import sumolib
 import traci
-from plexe import POS_X, POS_Y, ENGINE_MODEL_REALISTIC
+from plexe import POS_X, POS_Y, ENGINE_MODEL_REALISTIC, ACC, CACC, FAKED_CACC
 
 
 class Vehicle:
@@ -122,29 +122,95 @@ class Topology:
         raise ValueError(f"Vehicle {vehicle_id} not found")
 
 
+# Maybe something like this needs to be moved to Topology class??
 def init_topology(n_vehicles_per_platoon: List[int]) -> Topology:
     topology = Topology()
     vehicles_count = 0
-    n_platoons = n_vehicles_per_platoon.__len__()
 
-    for platoon_id in range(n_platoons):
-        n = n_vehicles_per_platoon[platoon_id]
+    for platoon_id, n in enumerate(n_vehicles_per_platoon):
         for i in range(n):
             vid = "v.%d" % vehicles_count
             vehicle = Vehicle(vid)
-            vehicles_count += 1
             if i == 0:
                 topology.create_platoon(vid)
             if i > 0:
-                front = "v.%d" % (i - 1)
-                print("FRONT: ", front)
-                vehicle.front = front
+                vehicle.front = "v.%d" % (vehicles_count - 1)
+                print("FRONT: ", vehicle.front)
             if i < n - 1:
-                back = "v.%d" % (i + 1)
-                print("BACK: ", back)
-                vehicle.back = back
+                vehicle.back = "v.%d" % (vehicles_count + 1)
+                print("BACK: ", vehicle.back)
 
             topology.add_vehicle(platoon_id, vehicle)
+            vehicles_count += 1
+    return topology
+
+
+def init_simulation(
+    plexe, topology: Topology, distance: int, length: int, speed: int, real_engine=False
+):
+    for platoon_id, (leader, vehicles) in topology.platoons.items():
+        for i, v in enumerate(vehicles):
+            add_platooning_vehicle(
+                plexe,
+                v.id,
+                (len(vehicles) - i + 1 + platoon_id) * (distance + length) + 50,
+                0,
+                speed,
+                distance,
+                real_engine,
+            )
+            # SECOND ARGUMENT IS LANE NUMBER
+            # MAY NOT BE BEST TO HAVE THIS BE PLATOON ID
+            plexe.set_fixed_lane(v.id, 0, safe=True)
+            if platoon_id > 0:
+                plexe.set_fixed_lane(v.id, platoon_id + 1, safe=True)
+            traci.vehicle.setSpeedMode(v.id, 0)
+            if v.id == leader:
+                plexe.set_active_controller(v.id, ACC)
+            else:
+                plexe.set_active_controller(v.id, CACC)
+
+
+def open_gap(plexe, vid, jid, join_distance: int, topology: Topology, n) -> Topology:
+    """
+    Makes the vehicle that will be behind the joiner open a gap to let the
+    joiner in. This is done by creating a temporary platoon, i.e., setting
+    the leader of all vehicles behind to the one that opens the gap and then
+    setting the front vehicle of the latter to be the joiner. To properly
+    open the gap, the vehicle leaving space switches to the "fake" CACC,
+    to consider the GPS distance to the joiner
+    :param plexe: API instance
+    :param vid: vehicle that should open the gap
+    :param jid: id of the joiner
+    :param topology: the current platoon topology
+    :param n: total number of vehicles currently in the platoon
+    :return: the modified topology
+    """
+    topology.create_sub_platoon(vid)
+    # index = int(vid.split(".")[1])
+    # sub_platoon = topology.create_platoon(vid)
+    # for i in range(index + 1, n):
+    #     sub_vid = "v.%d" % i
+    #     v = topology.remove_vehicle(sub_vid)[1]
+    #     topology.platoons[sub_platoon][1].append(v)
+    # temporarily change the leader
+    # BAD!!
+    # topology.get_vehicle("v.%d" % i)
+    # topology.platoons[0][0] = vid
+
+    # the front vehicle if the vehicle opening the gap is the joiner
+    print("CREATED SUBPLATOON: ", topology)
+    _, v = topology.get_vehicle(vid)
+    v.front = jid
+    # v = topology.get_vehicle(vid)[1]
+    # v.front = jid
+    # topology[0][vid]["front"] = jid
+    plexe.set_active_controller(vid, FAKED_CACC)
+    plexe.set_path_cacc_parameters(vid, distance=join_distance)
+    fd = plexe.get_vehicle_data(jid)
+    plexe.set_front_vehicle_data(vid, fd)
+    distance = get_distance(plexe, vid, jid)
+    plexe.set_front_vehicle_fake_data(vid, fd, distance)
 
     return topology
 
