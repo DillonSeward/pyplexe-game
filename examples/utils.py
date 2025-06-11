@@ -84,8 +84,9 @@ class Topology:
     def reset_leaders(self):
         while self.temporaries:
             sub_id, og_id = self.temporaries.popitem()
+            vehicles = self.platoons[sub_id][1][:]
             # Use a copy of the list to avoid issues while modifying it
-            for v in self.platoons[sub_id][1]:
+            for v in vehicles:
                 self.remove_vehicle(v.id)
                 self.add_vehicle(og_id, v)
 
@@ -97,7 +98,7 @@ class Topology:
     def add_vehicle(self, platoon: int, vehicle: Vehicle):
         if platoon not in self.platoons:
             self.platoons[platoon] = ("", [])
-        leader, vehicles = self.platoons[platoon]
+        _, vehicles = self.platoons[platoon]
         vehicles.append(vehicle)
 
     def get_leader(self, vehicle_id: str):
@@ -108,18 +109,17 @@ class Topology:
                     return leader
 
     def remove_vehicle(self, vehicle_id: str) -> Vehicle:
-        for platoon_id, (leader, vehicles) in self.platoons.items():
+        for platoon_id, (_, vehicles) in self.platoons.items():
             for i, v in enumerate(vehicles):
                 if v.id == vehicle_id:
-                    del vehicles[i]
-                    return v
-                    # return  (platoon_id, v)
+                    return vehicles.pop(i)
 
     def get_vehicle(self, vehicle_id: str) -> Tuple[int, Vehicle]:
-        for platoon_id, (leader, vehicles) in self.platoons.items():
-            for i, v in enumerate(vehicles):
+        for platoon_id, (_, vehicles) in self.platoons.items():
+            for v in vehicles:
                 if v.id == vehicle_id:
-                    return (platoon_id, v)
+                    return platoon_id, v
+        raise ValueError(f"Vehicle {vehicle_id} not found")
 
 
 def init_topology(n_vehicles_per_platoon: List[int]) -> Topology:
