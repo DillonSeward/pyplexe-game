@@ -9,3 +9,7 @@ build/
 *.egg-info/
 *cache
 dist/
+# Ignore Python bytecode cache
+__pycache__/
+**/__pycache__/
+*.py[cod]
