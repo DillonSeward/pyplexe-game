@@ -7,4 +7,5 @@ pyvenv.cfg
 # Python packaging artifacts
 build/
 *.egg-info/
+*cache
 dist/
