@@ -14,6 +14,7 @@ from utils import (
     add_platooning_vehicle,
     Topology,
     Vehicle,
+    get_in_position,
 )
 
 if "SUMO_HOME" in os.environ:
@@ -46,25 +47,6 @@ JOIN_POSITION = N_VEHICLES // 2
 FRONT_JOIN = "v.%d" % (JOIN_POSITION - 1)
 BEHIND_JOIN = "v.%d" % JOIN_POSITION
 JOINER = "v.%d" % N_VEHICLES
-
-
-def get_in_position(plexe, jid, fid, topology):
-    """
-    Makes the joining vehicle get close to the join position. This is done by
-    changing the topology and setting the leader and the front vehicle for
-    the joiner. In addition, we increase the cruising speed and we switch to
-    the "fake" CACC, which uses a given GPS distance instead of the radar
-    distance to compute the control action
-    :param plexe: API instance
-    :param jid: id of the joiner
-    :param fid: id of the vehicle that will become the predecessor of the joiner
-    :param topology: the current platoon topology
-    :return: the modified topology
-    """
-    _, joiner = topology.get_vehicle(jid)
-    plexe.set_cc_desired_speed(joiner.id, SPEED + 15)
-    plexe.set_active_controller(joiner.id, FAKED_CACC)
-    return topology
 
 
 def main(demo_mode, real_engine, setter=None):

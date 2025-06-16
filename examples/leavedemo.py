@@ -54,11 +54,9 @@ def main(demo_mode, real_engine, setter=None):
     step = 0
     state = IN_PLATOON
     topology = init_topology([N_VEHICLES])
-    print(topology)
 
     leave_pos = 4
     leaver = topology.platoons[0][1][leave_pos]
-    print("GOT LEAVER: ", leaver.id)
 
     while running(demo_mode, step, 6000):
         # when reaching 60 seconds, reset the simulation when in demo_mode
@@ -87,13 +85,12 @@ def main(demo_mode, real_engine, setter=None):
                 plexe, leaver.id, leaver.front, JOIN_DISTANCE, topology, N_VEHICLES
             )
             state = OPENING_GAP
-            print(state)
 
         if state == OPENING_GAP:
             plexe.set_active_controller(leaver.id, ACC)
+            traci.vehicle.setSpeed(leaver.id, SPEED)
             plexe.set_fixed_lane(leaver.id, 1, safe=False)
             state = LEAVING
-            print(state)
 
         if state == LEAVING:
             if get_distance(plexe, leaver.back, leaver.front) > (JOIN_DISTANCE + 1):
@@ -109,7 +106,6 @@ def main(demo_mode, real_engine, setter=None):
                 plexe.set_path_cacc_parameters(front.id, DISTANCE)
 
                 state = COMPLETED
-                print(state)
 
         if state == COMPLETED:
             topology.reset_leaders()

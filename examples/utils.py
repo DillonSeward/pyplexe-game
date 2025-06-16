@@ -53,33 +53,54 @@ class Topology:
                 output.append(f"    Temporary {sub_id} -> Original {og_id}")
         return "\n".join(output)
 
+    # def create_sub_platoon(self, leader_id: str) -> int:
+    #     (platoon_id, v) = self.get_vehicle(leader_id)
+    #     sub_platoon = self.create_platoon(v.id)
+    #     self.temporaries[sub_platoon] = platoon_id
+    #     leader_idx: Optional[int] = None
+    #     for i, v in enumerate(self.platoons[platoon_id][1]):
+    #         if leader_idx is not None:
+    #             break
+    #         if v.id == leader_id:
+    #             leader_idx = i
+    #     assert leader_idx is not None, "leader not in platoon???"
+
+    #     n = self.platoons[platoon_id][1].__len__()
+    #     print("N: ", n)
+
+    #     vehicles = self.platoons[platoon_id][1]
+    #     to_move_ids = [v.id for v in vehicles[leader_idx:]]
+
+    #     for vid in to_move_ids:
+    #         v = self.remove_vehicle(vid)
+    #         self.add_vehicle(sub_platoon, v)
     def create_sub_platoon(self, leader_id: str) -> int:
-        (platoon_id, v) = self.get_vehicle(leader_id)
-        sub_platoon = self.create_platoon(v.id)
-        self.temporaries[sub_platoon] = platoon_id
-        leader_idx: Optional[int] = None
-        for i, v in enumerate(self.platoons[platoon_id][1]):
-            if leader_idx is not None:
-                break
-            if v.id == leader_id:
-                leader_idx = i
-        assert leader_idx is not None, "leader not in platoon???"
+        # Return existing sub-platoon if already made for this leader
+        for sub_id, _ in self.temporaries.items():
+            if self.platoons[sub_id][0] == leader_id:
+                return sub_id
 
-        n = self.platoons[platoon_id][1].__len__()
-        print("N: ", n)
-
+        platoon_id, _ = self.get_vehicle(leader_id)
         vehicles = self.platoons[platoon_id][1]
-        to_move_ids = [v.id for v in vehicles[leader_idx:]]
 
-        for vid in to_move_ids:
-            v = self.remove_vehicle(vid)
+        leader_idx = next(
+            (i for i, v in enumerate(vehicles) if v.id == leader_id), None
+        )
+        assert leader_idx is not None, f"{leader_id} not found in platoon {platoon_id}"
+
+        sub_platoon = self.create_platoon(leader_id)
+        self.temporaries[sub_platoon] = platoon_id
+
+        to_move = vehicles[leader_idx:]
+        self.platoons[platoon_id] = (
+            self.platoons[platoon_id][0],
+            vehicles[:leader_idx],
+        )
+
+        for v in to_move:
             self.add_vehicle(sub_platoon, v)
 
-        # for i in range(leader_idx, n):
-        #     print("i: ", i)
-        #     v = self.platoons[platoon_id][1][i]
-        #     self.remove_vehicle(v.id)
-        #     self.add_vehicle(sub_platoon, v)
+        return sub_platoon
 
     def reset_leaders(self):
         while self.temporaries:
@@ -135,10 +156,8 @@ def init_topology(n_vehicles_per_platoon: List[int]) -> Topology:
                 topology.create_platoon(vid)
             if i > 0:
                 vehicle.front = "v.%d" % (vehicles_count - 1)
-                print("FRONT: ", vehicle.front)
             if i < n - 1:
                 vehicle.back = "v.%d" % (vehicles_count + 1)
-                print("BACK: ", vehicle.back)
 
             topology.add_vehicle(platoon_id, vehicle)
             vehicles_count += 1
@@ -150,25 +169,46 @@ def init_simulation(
 ):
     for platoon_id, (leader, vehicles) in topology.platoons.items():
         for i, v in enumerate(vehicles):
+            if platoon_id == 0:
+                lane = 0
+            if platoon_id > 0:
+                lane = platoon_id + 1
             add_platooning_vehicle(
                 plexe,
                 v.id,
                 (len(vehicles) - i + 1 + platoon_id) * (distance + length) + 50,
-                0,
+                lane,
                 speed,
                 distance,
                 real_engine,
             )
-            # SECOND ARGUMENT IS LANE NUMBER
-            # MAY NOT BE BEST TO HAVE THIS BE PLATOON ID
-            plexe.set_fixed_lane(v.id, 0, safe=True)
-            if platoon_id > 0:
-                plexe.set_fixed_lane(v.id, platoon_id + 1, safe=True)
+            plexe.set_fixed_lane(v.id, lane, safe=True)
+            traci.vehicle.setLaneChangeMode(v.id, 0)
             traci.vehicle.setSpeedMode(v.id, 0)
+
             if v.id == leader:
                 plexe.set_active_controller(v.id, ACC)
             else:
                 plexe.set_active_controller(v.id, CACC)
+
+
+def get_in_position(plexe, jid, fid, speed, topology):
+    """
+    Makes the joining vehicle get close to the join position. This is done by
+    changing the topology and setting the leader and the front vehicle for
+    the joiner. In addition, we increase the cruising speed and we switch to
+    the "fake" CACC, which uses a given GPS distance instead of the radar
+    distance to compute the control action
+    :param plexe: API instance
+    :param jid: id of the joiner
+    :param fid: id of the vehicle that will become the predecessor of the joiner
+    :param topology: the current platoon topology
+    :return: the modified topology
+    """
+    _, joiner = topology.get_vehicle(jid)
+    plexe.set_cc_desired_speed(joiner.id, speed + 15)
+    plexe.set_active_controller(joiner.id, FAKED_CACC)
+    return topology
 
 
 def open_gap(plexe, vid, jid, join_distance: int, topology: Topology, n) -> Topology:
@@ -215,11 +255,21 @@ def open_gap(plexe, vid, jid, join_distance: int, topology: Topology, n) -> Topo
     return topology
 
 
-class LeaveManeuver:
-    def __init__(self, leader: str, n_vehicles: int, leave_position: int):
-        self.front_leave = "v.%d" % (leave_position - 1)
-        self.behind_leave = "v.%d" % leave_position
-        self.leaver = "v.%d" % leave_position
+def reconfigure_platoons(plexe, topology: Topology):
+    for platoon_id, (leader, vehicles) in topology.platoons.items():
+        leader_data = plexe.get_vehicle_data(leader)
+        for idx, v in enumerate(vehicles):
+            if v.id == leader:
+                plexe.set_active_controller(v.id, ACC)
+            else:
+                plexe.set_active_controller(v.id, CACC)
+            plexe.set_leader_vehicle_data(v.id, leader_data)
+            plexe.set_leader_vehicle_fake_data(v.id, leader_data)
+            if v.front is not None:
+                fd = plexe.get_vehicle_data(v.front)
+                distance = get_distance(plexe, v.id, v.front)
+                plexe.set_front_vehicle_data(v.id, fd)
+                plexe.set_front_vehicle_fake_data(v.id, fd, distance)
 
 
 # lane change state bits
