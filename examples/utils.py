@@ -14,6 +14,15 @@ import sumolib
 import traci
 from plexe import POS_X, POS_Y, ENGINE_MODEL_REALISTIC, ACC, CACC, FAKED_CACC
 
+# vehicle length
+LENGTH = 4
+# inter-vehicle distance
+DISTANCE = 5
+# inter-vehicle distance when leaving space for joining
+JOIN_DISTANCE = DISTANCE * 2
+# cruising speed
+SPEED = 120 / 3.6
+
 
 class Vehicle:
     # MAY NEED TO STORE LEADER INFORMATION
@@ -53,27 +62,6 @@ class Topology:
                 output.append(f"    Temporary {sub_id} -> Original {og_id}")
         return "\n".join(output)
 
-    # def create_sub_platoon(self, leader_id: str) -> int:
-    #     (platoon_id, v) = self.get_vehicle(leader_id)
-    #     sub_platoon = self.create_platoon(v.id)
-    #     self.temporaries[sub_platoon] = platoon_id
-    #     leader_idx: Optional[int] = None
-    #     for i, v in enumerate(self.platoons[platoon_id][1]):
-    #         if leader_idx is not None:
-    #             break
-    #         if v.id == leader_id:
-    #             leader_idx = i
-    #     assert leader_idx is not None, "leader not in platoon???"
-
-    #     n = self.platoons[platoon_id][1].__len__()
-    #     print("N: ", n)
-
-    #     vehicles = self.platoons[platoon_id][1]
-    #     to_move_ids = [v.id for v in vehicles[leader_idx:]]
-
-    #     for vid in to_move_ids:
-    #         v = self.remove_vehicle(vid)
-    #         self.add_vehicle(sub_platoon, v)
     def create_sub_platoon(self, leader_id: str) -> int:
         # Return existing sub-platoon if already made for this leader
         for sub_id, _ in self.temporaries.items():
@@ -142,6 +130,14 @@ class Topology:
                     return platoon_id, v
         raise ValueError(f"Vehicle {vehicle_id} not found")
 
+    def inPlatoon(self, vid: str) -> bool:
+        try:
+            platoon_id, _ = self.get_vehicle(vid)
+            _, vehicles = self.platoons[platoon_id]
+            return len(vehicles) == 1
+        except ValueError:
+            return True
+
 
 # Maybe something like this needs to be moved to Topology class??
 def init_topology(n_vehicles_per_platoon: List[int]) -> Topology:
@@ -164,9 +160,7 @@ def init_topology(n_vehicles_per_platoon: List[int]) -> Topology:
     return topology
 
 
-def init_simulation(
-    plexe, topology: Topology, distance: int, length: int, speed: int, real_engine=False
-):
+def init_simulation(plexe, topology: Topology, real_engine=False):
     for platoon_id, (leader, vehicles) in topology.platoons.items():
         for i, v in enumerate(vehicles):
             if platoon_id == 0:
@@ -176,10 +170,10 @@ def init_simulation(
             add_platooning_vehicle(
                 plexe,
                 v.id,
-                (len(vehicles) - i + 1 + platoon_id) * (distance + length) + 50,
+                (len(vehicles) - i + 1 + platoon_id) * (DISTANCE + LENGTH) + 50,
                 lane,
-                speed,
-                distance,
+                SPEED,
+                DISTANCE,
                 real_engine,
             )
             plexe.set_fixed_lane(v.id, lane, safe=True)
@@ -192,7 +186,73 @@ def init_simulation(
                 plexe.set_active_controller(v.id, CACC)
 
 
-def get_in_position(plexe, jid, fid, speed, topology):
+# def leavePlatoon(veh: Vehicle, topology: Topology, plexe):
+#     print(f"[leavePlatoon] Starting leave maneuver for {veh.id}")
+
+#     if not topology.inPlatoon(veh.id):
+#         return "Error: Vehicle is not in a platoon to leave"
+
+#     topology = open_gap(plexe, veh.back, veh.id, JOIN_DISTANCE, topology)
+#     topology = open_gap(plexe, veh.id, veh.front, JOIN_DISTANCE, topology)
+
+#     plexe.set_active_controller(veh.id, ACC)
+#     traci.vehicle.setSpeed(veh.id, SPEED)
+#     plexe.set_fixed_lane(veh.id, 1, safe=False)
+
+#     while get_distance(plexe, veh.back, veh.front) <= (JOIN_DISTANCE + 1):
+#         traci.simulationStep()
+#     _, back = topology.get_vehicle(veh.back)
+#     _, front = topology.get_vehicle(veh.back)
+#     back.front = front.id
+#     front.back = back.id
+
+#     # swithing back control scheme
+#     plexe.set_active_controller(back.id, CACC)
+#     plexe.set_active_controller(front.id, CACC)
+#     plexe.set_path_cacc_parameters(back.id, DISTANCE)
+#     plexe.set_path_cacc_parameters(front.id, DISTANCE)
+
+#     print(f"[leavePlatoon] {veh.id} successfully left the platoon.")
+
+
+# def joinPlatoon(veh: Vehicle, target_platoon: int, topology: Topology, plexe):
+#     print(f"[joinPlatoon] starting for vehicle: {veh.id} to platoon: {target_platoon}")
+
+#     if topology.inPlatoon(veh.id):
+#         leavePlatoon(veh.id, topology, plexe)
+
+#     if not veh.front or not veh.back:
+#         print(
+#             f"[joinPlatoon] Front or back vehicle not defined for {veh.id}, aborting."
+#         )
+
+#     topology = get_in_position(plexe, veh.id, veh.front, topology)
+
+#     while get_distance(plexe, veh.id, veh.front) >= JOIN_DISTANCE + 1:
+#         traci.simulationStep()
+
+#     topology = open_gap(plexe, veh.back, veh.id, JOIN_DISTANCE, topology)
+
+#     while get_distance(plexe, veh.id, veh.front) >= 2 * JOIN_DISTANCE + 2:
+#         traci.simulationStep()
+
+#     plexe.set_fixed_lane(
+#         veh.id,
+#         traci.vehicle.getLaneIndex(topology.get_leader(veh.front)),
+#         safe=False,
+#     )
+#     plexe.set_active_controller(veh.id, CACC)
+#     plexe.set_path_cacc_parameters(veh.id, distance=DISTANCE)
+#     plexe.set_active_controller(veh.back, CACC)
+#     plexe.set_path_cacc_parameters(veh.back, distance=DISTANCE)
+#     topology.reset_leaders()
+
+#     print(
+#         f"[joinPlatoon] vehicle: {veh.id} successfully joined platoon: {target_platoon}."
+#     )
+
+
+def get_in_position(plexe, jid, fid, topology):
     """
     Makes the joining vehicle get close to the join position. This is done by
     changing the topology and setting the leader and the front vehicle for
@@ -206,12 +266,12 @@ def get_in_position(plexe, jid, fid, speed, topology):
     :return: the modified topology
     """
     _, joiner = topology.get_vehicle(jid)
-    plexe.set_cc_desired_speed(joiner.id, speed + 15)
+    plexe.set_cc_desired_speed(joiner.id, SPEED + 15)
     plexe.set_active_controller(joiner.id, FAKED_CACC)
     return topology
 
 
-def open_gap(plexe, vid, jid, join_distance: int, topology: Topology, n) -> Topology:
+def open_gap(plexe, vid, jid, join_distance: int, topology: Topology) -> Topology:
     """
     Makes the vehicle that will be behind the joiner open a gap to let the
     joiner in. This is done by creating a temporary platoon, i.e., setting
@@ -239,7 +299,6 @@ def open_gap(plexe, vid, jid, join_distance: int, topology: Topology, n) -> Topo
     # topology.platoons[0][0] = vid
 
     # the front vehicle if the vehicle opening the gap is the joiner
-    print("CREATED SUBPLATOON: ", topology)
     _, v = topology.get_vehicle(vid)
     v.front = jid
     # v = topology.get_vehicle(vid)[1]
@@ -255,21 +314,22 @@ def open_gap(plexe, vid, jid, join_distance: int, topology: Topology, n) -> Topo
     return topology
 
 
-def reconfigure_platoons(plexe, topology: Topology):
-    for platoon_id, (leader, vehicles) in topology.platoons.items():
-        leader_data = plexe.get_vehicle_data(leader)
-        for idx, v in enumerate(vehicles):
-            if v.id == leader:
-                plexe.set_active_controller(v.id, ACC)
-            else:
-                plexe.set_active_controller(v.id, CACC)
-            plexe.set_leader_vehicle_data(v.id, leader_data)
-            plexe.set_leader_vehicle_fake_data(v.id, leader_data)
-            if v.front is not None:
-                fd = plexe.get_vehicle_data(v.front)
-                distance = get_distance(plexe, v.id, v.front)
-                plexe.set_front_vehicle_data(v.id, fd)
-                plexe.set_front_vehicle_fake_data(v.id, fd, distance)
+# MAY NOT BE SUPER HELPFUL OR NEEDED, GPT CODE
+# def reconfigure_platoons(plexe, topology: Topology):
+#     for platoon_id, (leader, vehicles) in topology.platoons.items():
+#         leader_data = plexe.get_vehicle_data(leader)
+#         for idx, v in enumerate(vehicles):
+#             if v.id == leader:
+#                 plexe.set_active_controller(v.id, ACC)
+#             else:
+#                 plexe.set_active_controller(v.id, CACC)
+#             plexe.set_leader_vehicle_data(v.id, leader_data)
+#             plexe.set_leader_vehicle_fake_data(v.id, leader_data)
+#             if v.front is not None:
+#                 fd = plexe.get_vehicle_data(v.front)
+#                 distance = get_distance(plexe, v.id, v.front)
+#                 plexe.set_front_vehicle_data(v.id, fd)
+#                 plexe.set_front_vehicle_fake_data(v.id, fd, distance)
 
 
 # lane change state bits
@@ -449,3 +509,180 @@ def get_status(status):
             else:
                 st += " 2^" + str(i)
     return st
+
+
+# ✅ Event-driven join-and-leave logic using state tracking per vehicle
+
+# Maneuver status tracking dicts
+leave_tasks = {}
+join_tasks = {}
+
+
+def leavePlatoon(veh: Vehicle, topology: Topology, plexe):
+    print(f"[leavePlatoon] Initiating leave maneuver for {veh.id}")
+
+    topology = open_gap(plexe, veh.back, veh.id, JOIN_DISTANCE, topology)
+    topology = open_gap(plexe, veh.id, veh.front, JOIN_DISTANCE, topology)
+
+    plexe.set_active_controller(veh.id, ACC)
+    traci.vehicle.setSpeed(veh.id, SPEED)
+    plexe.set_cc_desired_speed(veh.id, SPEED + 5)
+    traci.vehicle.setLaneChangeMode(veh.id, 0)
+    plexe.set_fixed_lane(veh.id, 1, safe=False)
+
+    leave_tasks[veh.id] = {"veh": veh, "status": "waiting"}
+
+
+def joinPlatoon(veh: Vehicle, target_platoon: int, topology: Topology, plexe):
+    # If the vehicle is still in a platoon (like v.10 in platoon 1), initiate leave first
+    if topology.inPlatoon(veh.id):
+        print(f"[joinPlatoon] {veh.id} is still in a platoon, triggering leave first")
+        leavePlatoon(veh, topology, plexe)
+        # Only schedule join once
+        if veh.id not in join_tasks:
+            join_tasks[veh.id] = {
+                "veh": veh,
+                "front": veh.front,
+                "back": veh.back,
+                "status": "waiting_for_leave",
+                "target_platoon": target_platoon,
+            }
+        return
+        # If rejoining after leave, don't overwrite join_tasks
+    if veh.id not in join_tasks or join_tasks[veh.id]["status"] == "waiting_for_leave":
+        join_tasks[veh.id] = {
+            "veh": veh,
+            "front": veh.front,
+            "back": veh.back,
+            "status": "moving_to_position",
+            "target_platoon": target_platoon,
+        }
+        return
+    print(f"[joinPlatoon] Initiating join maneuver for {veh.id}")
+
+    # Force-remove from current platoon if necessary
+    try:
+        topology.remove_vehicle(veh.id)
+    except ValueError:
+        pass
+
+    # Set front/back explicitly if needed (can also be passed in externally)
+    if not veh.front or not veh.back:
+        print(f"[joinPlatoon] Missing front/back. Assigning defaults for demo.")
+        veh.front = "v.5"
+        veh.back = "v.4"
+
+    # Add to solo platoon if not yet in one
+    try:
+        topology.get_vehicle(veh.id)
+    except ValueError:
+        solo_id = topology.create_platoon(veh.id)
+        topology.add_vehicle(solo_id, veh)
+
+    get_in_position(plexe, veh.id, veh.front, topology)
+    plexe.set_cc_desired_speed(veh.id, SPEED + 5)
+
+    join_tasks[veh.id] = {
+        "veh": veh,
+        "front": veh.front,
+        "back": veh.back,
+        "status": "moving_to_position",
+        "target_platoon": target_platoon,
+    }
+
+
+def update_maneuvers(topology: Topology, plexe):
+    from utils import communicate
+
+    communicate(plexe, topology)
+
+    # Update leave maneuvers
+    for vid, task in list(leave_tasks.items()):
+        veh = task["veh"]
+        if get_distance(plexe, veh.back, veh.front) > JOIN_DISTANCE + 1:
+            _, back = topology.get_vehicle(veh.back)
+            _, front = topology.get_vehicle(veh.front)
+
+            back.front = front.id
+            front.back = back.id
+
+            topology.remove_vehicle(veh.id)
+            new_platoon = topology.create_platoon(veh.id)
+            topology.add_vehicle(new_platoon, veh)
+
+            plexe.set_active_controller(back.id, CACC)
+            plexe.set_active_controller(front.id, CACC)
+            plexe.set_path_cacc_parameters(back.id, DISTANCE)
+            plexe.set_path_cacc_parameters(front.id, DISTANCE)
+
+            del leave_tasks[vid]
+            print(f"[leavePlatoon] {vid} completed leaving the platoon.")
+
+    # Update join maneuvers
+    for vid, task in list(join_tasks.items()):
+        veh = task["veh"]
+        front_id = task["front"]
+        back_id = task["back"]
+
+        print(
+            f"[joinPlatoon] Distance to front: {get_distance(plexe, veh.id, front_id):.2f}"
+        )
+
+        if task["status"] == "moving_to_position":
+            if get_distance(
+                plexe, veh.id, front_id
+            ) < JOIN_DISTANCE + 1 and traci.vehicle.getLaneID(
+                veh.id
+            ) == traci.vehicle.getLaneID(front_id):
+                topology = open_gap(plexe, back_id, veh.id, JOIN_DISTANCE, topology)
+
+                _, front_v = topology.get_vehicle(front_id)
+                _, back_v = topology.get_vehicle(back_id)
+                _, veh_v = topology.get_vehicle(veh.id)
+
+                front_v.back = veh.id
+                back_v.front = veh.id
+                veh_v.front = front_id
+                veh_v.back = back_id
+                veh_v.leader = topology.platoons[topology.get_vehicle(front_id)[0]][0]
+
+                task["status"] = "gap_opened"
+
+        elif task["status"] == "waiting_for_leave":
+            if veh.id not in leave_tasks:
+                print(f"[joinPlatoon] {veh.id} has left, continuing join")
+                task["status"] = "moving_to_position"
+
+        elif task["status"] == "gap_opened":
+            if get_distance(
+                plexe, veh.id, front_id
+            ) < 2 * JOIN_DISTANCE + 2 and traci.vehicle.getLaneID(
+                veh.id
+            ) == traci.vehicle.getLaneID(front_id):
+                lane_idx = traci.vehicle.getLaneIndex(front_id)
+                print(f"[joinPlatoon] Setting lane {lane_idx} for {veh.id}")
+
+                traci.vehicle.setLaneChangeMode(veh.id, 0)
+                plexe.set_fixed_lane(veh.id, lane_idx, safe=False)
+                traci.vehicle.setSpeed(veh.id, SPEED)
+                plexe.set_active_controller(veh.id, CACC)
+                plexe.set_path_cacc_parameters(veh.id, distance=DISTANCE)
+                plexe.set_active_controller(back_id, CACC)
+                plexe.set_path_cacc_parameters(back_id, distance=DISTANCE)
+
+                # Optional: force vehicle position behind front vehicle
+                front_pos = plexe.get_vehicle_data(front_id)[POS_X]
+                new_pos = front_pos - (DISTANCE + LENGTH)
+                lane_id = traci.vehicle.getLaneID(front_id)
+                traci.vehicle.moveTo(veh.id, lane_id, new_pos)
+
+                # Reassign vehicle to correct platoon
+                topology.remove_vehicle(veh.id)
+                target_platoon, _ = topology.get_vehicle(front_id)
+                topology.add_vehicle(target_platoon, veh)
+
+                topology.reset_leaders()
+                del join_tasks[vid]
+                print(
+                    f"[joinPlatoon] {vid} successfully joined platoon {task['target_platoon']}."
+                )

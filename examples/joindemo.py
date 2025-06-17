@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import os
-import sys
 import random
+import sys
 
 from utils import (
     communicate,
@@ -75,7 +75,7 @@ def main(demo_mode, real_engine, setter=None):
 
         if step == 0:
             # create vehicles and track the joiner
-            init_simulation(plexe, topology, DISTANCE, LENGTH, SPEED, real_engine)
+            init_simulation(plexe, topology, real_engine)
             vid = JOINER
             add_platooning_vehicle(plexe, vid, 10, 1, SPEED, DISTANCE, real_engine)
             joiner_vehicle = Vehicle(JOINER, front=FRONT_JOIN)
@@ -102,9 +102,7 @@ def main(demo_mode, real_engine, setter=None):
             # open a gap to let the joiner enter the platoon
             if get_distance(plexe, JOINER, FRONT_JOIN) < JOIN_DISTANCE + 1:
                 state = OPENING_GAP
-                topology = open_gap(
-                    plexe, BEHIND_JOIN, JOINER, JOIN_DISTANCE, topology, N_VEHICLES
-                )
+                topology = open_gap(plexe, BEHIND_JOIN, JOINER, JOIN_DISTANCE, topology)
         if state == OPENING_GAP:
             # when the gap is large enough, complete the maneuver
             if get_distance(plexe, BEHIND_JOIN, FRONT_JOIN) > 2 * JOIN_DISTANCE + 2:
