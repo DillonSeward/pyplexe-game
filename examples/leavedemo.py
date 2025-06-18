@@ -70,7 +70,7 @@ def main(demo_mode, real_engine, setter=None):
 
         if step == 0:
             # create vehicles and track the joiner
-            init_simulation(plexe, topology, DISTANCE, LENGTH, SPEED, real_engine)
+            init_simulation(plexe, topology, real_engine)
             traci.gui.trackVehicle("View #0", LEAVER)
             traci.gui.setZoom("View #0", 20000)
         if step % 10 == 1:
@@ -78,12 +78,8 @@ def main(demo_mode, real_engine, setter=None):
             communicate(plexe, topology)
         if state == IN_PLATOON and step == 100:
             # at 1 second, let the joiner get closer to the platoon
-            topology = open_gap(
-                plexe, leaver.back, leaver.id, JOIN_DISTANCE, topology, N_VEHICLES
-            )
-            topology = open_gap(
-                plexe, leaver.id, leaver.front, JOIN_DISTANCE, topology, N_VEHICLES
-            )
+            topology = open_gap(plexe, leaver.back, leaver.id, JOIN_DISTANCE, topology)
+            topology = open_gap(plexe, leaver.id, leaver.front, JOIN_DISTANCE, topology)
             state = OPENING_GAP
 
         if state == OPENING_GAP:
