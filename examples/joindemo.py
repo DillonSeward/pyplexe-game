@@ -43,7 +43,7 @@ def main(demo_mode, real_engine, setter=None):
     topology = init_topology([N_VEHICLES, 1])
     print(topology)
 
-    joiner = topology.platoons[1][1][0]
+    joiner = topology.platoons[1].vehicles[0]
     print("GOT JOINER: ", joiner)
 
     mans: List[Maneuver] = []

@@ -60,7 +60,7 @@ def main(demo_mode, real_engine, setter=None):
     state = IN_PLATOON
     topology = init_topology([8, 8])
     leave_pos = 4
-    leaver = topology.platoons[0][1][leave_pos]
+    leaver = topology.platoons[0].vehicles[leave_pos]
 
     while running(demo_mode, step, 6000):
         # when reaching 60 seconds, reset the simulation when in demo_mode
@@ -125,7 +125,7 @@ def main(demo_mode, real_engine, setter=None):
 
         if state == JOINING and step > 3000:
             # define mid-point join target in platoon 1
-            platoon1 = topology.platoons[1][1]
+            platoon1 = topology.platoons[1].vehicles
             join_index = 4  # e.g., insert between v.11 and v.12
             front = platoon1[join_index - 1]
             back = platoon1[join_index]

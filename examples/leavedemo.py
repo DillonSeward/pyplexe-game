@@ -56,7 +56,7 @@ def main(demo_mode, real_engine, setter=None):
     topology = init_topology([N_VEHICLES])
 
     leave_pos = 4
-    leaver = topology.platoons[0][1][leave_pos]
+    leaver = topology.platoons[0].vehicles[leave_pos]
 
     while running(demo_mode, step, 6000):
         # when reaching 60 seconds, reset the simulation when in demo_mode

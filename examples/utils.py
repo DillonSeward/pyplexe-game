@@ -37,6 +37,18 @@ class Vehicle:
         return f"Vehicle(id='{self.id}', front='{self.front or 'None'}', back='{self.back or 'None'}')"
 
 
+class Platoon:
+    def __init__(
+        self,
+        leader_id: str,
+        # lane: int,
+        vehicles: List[Vehicle],
+    ):
+        self.leader_id = leader_id
+        self.vehicles: List[Vehicle] = vehicles
+        # self.lane: int = lane
+
+
 class Topology:
     def __init__(self):
         """
@@ -44,7 +56,7 @@ class Topology:
         - a leader ID (str)
         - a list of Vehicle objects
         """
-        self.platoons: Dict[int, Tuple[str, List[Vehicle]]] = {}
+        self.platoons: Dict[int, Platoon] = {}
         """
          Temporary platoons have to be made to execute most maneuvers
          when these are created, we store the id of the temporary platoon as a key with the id of the platoon it branched off of as a value
@@ -53,11 +65,11 @@ class Topology:
 
     def __str__(self) -> str:
         output = ["Topology:"]
-        for platoon_id, (leader, vehicles) in self.platoons.items():
+        for platoon_id, platoon in self.platoons.items():
             output.append(f"  Platoon {platoon_id}:")
-            output.append(f"    Leader: {leader}")
+            output.append(f"    Leader: {platoon.leader_id}")
             output.append(f"    Vehicles:")
-            for v in vehicles:
+            for v in platoon.vehicles:
                 output.append(f"      - ID: {v.id}, Front: {v.front}, Back: {v.back}")
         if self.temporaries:
             output.append("  Temporary Platoon Mappings:")
@@ -68,11 +80,11 @@ class Topology:
     def create_sub_platoon(self, leader_id: str) -> int:
         # Return existing sub-platoon if already made for this leader
         for sub_id, _ in self.temporaries.items():
-            if self.platoons[sub_id][0] == leader_id:
+            if self.platoons[sub_id].leader_id == leader_id:
                 return sub_id
 
         platoon_id, _ = self.get_vehicle(leader_id)
-        vehicles = self.platoons[platoon_id][1]
+        vehicles = self.platoons[platoon_id].vehicles
 
         leader_idx = next(
             (i for i, v in enumerate(vehicles) if v.id == leader_id), None
@@ -83,8 +95,8 @@ class Topology:
         self.temporaries[sub_platoon] = platoon_id
 
         to_move = vehicles[leader_idx:]
-        self.platoons[platoon_id] = (
-            self.platoons[platoon_id][0],
+        self.platoons[platoon_id] = Platoon(
+            self.platoons[platoon_id].leader_id,
             vehicles[:leader_idx],
         )
 
@@ -96,39 +108,39 @@ class Topology:
     def reset_leaders(self):
         while self.temporaries:
             sub_id, og_id = self.temporaries.popitem()
-            vehicles = self.platoons[sub_id][1][:]
+            vehicles = self.platoons[sub_id].vehicles
             # Use a copy of the list to avoid issues while modifying it
             for v in vehicles:
                 self.remove_vehicle(v.id)
                 self.add_vehicle(og_id, v)
 
     def create_platoon(self, leader_id: str) -> int:
-        id = self.platoons.__len__()
-        self.platoons[id] = (leader_id, [])
+        id = len(self.platoons)
+        self.platoons[id] = Platoon(leader_id, [])
         return id
 
     def add_vehicle(self, platoon: int, vehicle: Vehicle):
         if platoon not in self.platoons:
-            self.platoons[platoon] = ("", [])
-        _, vehicles = self.platoons[platoon]
-        vehicles.append(vehicle)
+            self.platoons[platoon] = Platoon("", [])
+        platoon = self.platoons[platoon]
+        platoon.vehicles.append(vehicle)
 
     def get_leader(self, vehicle_id: str):
-        for platoon_id, (leader, vehicles) in self.platoons.items():
-            for i, v in enumerate(vehicles):
+        for platoon_id, platoon in self.platoons.items():
+            for i, v in enumerate(platoon.vehicles):
                 if v.id == vehicle_id:
-                    del vehicles[i]
-                    return leader
+                    del platoon.vehicles[i]
+                    return platoon.leader_id
 
     def remove_vehicle(self, vehicle_id: str) -> Vehicle:
-        for platoon_id, (_, vehicles) in self.platoons.items():
-            for i, v in enumerate(vehicles):
+        for platoon_id, platoon in self.platoons.items():
+            for i, v in enumerate(platoon.vehicles):
                 if v.id == vehicle_id:
-                    return vehicles.pop(i)
+                    return platoon.vehicles.pop(i)
 
     def get_vehicle(self, vehicle_id: str) -> Tuple[int, Vehicle]:
-        for platoon_id, (_, vehicles) in self.platoons.items():
-            for v in vehicles:
+        for platoon_id, platoon in self.platoons.items():
+            for v in platoon.vehicles:
                 if v.id == vehicle_id:
                     return platoon_id, v
         raise ValueError(f"Vehicle {vehicle_id} not found")
@@ -136,8 +148,8 @@ class Topology:
     def inPlatoon(self, vid: str) -> bool:
         try:
             platoon_id, _ = self.get_vehicle(vid)
-            _, vehicles = self.platoons[platoon_id]
-            return len(vehicles) == 1
+            platoon = self.platoons[platoon_id]
+            return len(platoon.vehicles) == 1
         except ValueError:
             return True
 
@@ -164,8 +176,8 @@ def init_topology(n_vehicles_per_platoon: List[int]) -> Topology:
 
 
 def init_simulation(plexe, topology: Topology, real_engine=False):
-    for platoon_id, (leader, vehicles) in topology.platoons.items():
-        for i, v in enumerate(vehicles):
+    for platoon_id, platoon in topology.platoons.items():
+        for i, v in enumerate(platoon.vehicles):
             if platoon_id == 0:
                 lane = 0
             if platoon_id > 0:
@@ -173,7 +185,7 @@ def init_simulation(plexe, topology: Topology, real_engine=False):
             add_platooning_vehicle(
                 plexe,
                 v.id,
-                (len(vehicles) - i + 1 + platoon_id) * (DISTANCE + LENGTH) + 50,
+                (len(platoon.vehicles) - i + 1 + platoon_id) * (DISTANCE + LENGTH) + 50,
                 lane,
                 SPEED,
                 DISTANCE,
@@ -183,7 +195,7 @@ def init_simulation(plexe, topology: Topology, real_engine=False):
             traci.vehicle.setLaneChangeMode(v.id, 0)
             traci.vehicle.setSpeedMode(v.id, 0)
 
-            if v.id == leader:
+            if v.id == platoon.leader_id:
                 plexe.set_active_controller(v.id, ACC)
             else:
                 plexe.set_active_controller(v.id, CACC)
@@ -349,10 +361,10 @@ def communicate(plexe, topology: Topology):
     which includes the keys "leader" and "front"
     """
     # for vid, l in topology.platoons.items():
-    for platoon_id, (leader, vehicles) in topology.platoons.items():
+    for platoon_id, platoon in topology.platoons.items():
         # get data about platoon leader
-        ld = plexe.get_vehicle_data(leader)
-        for v in vehicles:
+        ld = plexe.get_vehicle_data(platoon.leader_id)
+        for v in platoon.vehicles:
             # pass leader vehicle data to CACC
             plexe.set_leader_vehicle_data(v.id, ld)
             # pass data to the fake CACC as well, in case it's needed

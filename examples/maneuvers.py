@@ -22,6 +22,30 @@ class Maneuver:
         pass
 
 
+class LeaveManeuver(Maneuver):
+    class State(Enum):
+        IN_PLATOON = 0
+        OPENING_GAP = 1
+        LEAVING = 2
+        COMPLETED = 3
+
+        def __str__(self):
+            match self:
+                case LeaveManeuver.State.IN_PLATOON:
+                    return "IN_PLATOON"
+                case LeaveManeuver.State.OPENING_GAP:
+                    return "OPENING_GAP"
+                case LeaveManeuver.State.LEAVING:
+                    return "LEAVING"
+                case LeaveManeuver.State.COMPLETED:
+                    return "COMPLETED"
+
+    def __init__(
+        self, vehicle: Vehicle, target_platoon: int, join_idx: int, topology: Topology
+    ):
+        super().__init__(vehicle)
+
+
 class JoinManeuver(Maneuver):
     class State(Enum):
         WAITING = 0
@@ -49,7 +73,7 @@ class JoinManeuver(Maneuver):
         self.state = JoinManeuver.State.WAITING
         in_platoon, _ = topology.get_vehicle(self.vehicle.id)
         assert in_platoon != self.target_platoon
-        platoon_vehicles = topology.platoons[self.target_platoon][1]
+        platoon_vehicles = topology.platoons[self.target_platoon].vehicles
         if (front_join := platoon_vehicles[self.join_idx]) is None:
             raise ValueError("Vehicle has no front!")
         # if (back_join := platoon_vehicles[self.join_idx - 1]) is None:
