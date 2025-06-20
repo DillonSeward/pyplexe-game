@@ -17,6 +17,9 @@ from utils import (
     get_in_position,
 )
 
+from enum import Enum
+from typing import List
+
 if "SUMO_HOME" in os.environ:
     tools = os.path.join(os.environ["SUMO_HOME"], "tools")
     sys.path.append(tools)
@@ -24,7 +27,8 @@ else:
     sys.exit("please declare environment variable 'SUMO_HOME'")
 
 import traci
-from plexe import Plexe, ACC, CACC, FAKED_CACC, RPM, GEAR, ACCELERATION, SPEED
+from plexe import Plexe, ACC, CACC, RPM, GEAR
+from abc import abstractmethod
 
 # vehicle length
 LENGTH = 4
@@ -35,18 +39,88 @@ JOIN_DISTANCE = DISTANCE * 2
 # cruising speed
 SPEED = 120 / 3.6
 
-# maneuver states:
-GOING_TO_POSITION = 0
-OPENING_GAP = 1
-WAITING = 2
-COMPLETED = 3
-
-LEADER = "v.0"
 N_VEHICLES = 8
-JOIN_POSITION = N_VEHICLES // 2
-FRONT_JOIN = "v.%d" % (JOIN_POSITION - 1)
-BEHIND_JOIN = "v.%d" % JOIN_POSITION
-JOINER = "v.%d" % N_VEHICLES
+
+
+class Maneuver:
+    def __init__(self, v: Vehicle):
+        self.vehicle = v
+
+    @abstractmethod
+    def update(self, plexe, topology: Topology):
+        pass
+
+
+class JoinManeuver(Maneuver):
+    class State(Enum):
+        WAITING = 0
+        OPENING_GAP = 1
+        GOING_TO_POSITION = 2
+        COMPLETED = 3
+
+        def __str__(self):
+            match self:
+                case JoinManeuver.State.WAITING:
+                    return "WAITING"
+                case JoinManeuver.State.OPENING_GAP:
+                    return "OPENING_GAP"
+                case JoinManeuver.State.GOING_TO_POSITION:
+                    return "GOING_TO_POSITION"
+                case JoinManeuver.State.COMPLETED:
+                    return "COMPLETED"
+
+    def __init__(
+        self, vehicle: Vehicle, target_platoon: int, join_idx: int, topology: Topology
+    ):
+        super().__init__(vehicle)
+        self.target_platoon = target_platoon
+        self.join_idx = join_idx
+        self.state = JoinManeuver.State.WAITING
+        in_platoon, _ = topology.get_vehicle(self.vehicle.id)
+        assert in_platoon != self.target_platoon
+        platoon_vehicles = topology.platoons[self.target_platoon][1]
+        if (front_join := platoon_vehicles[self.join_idx]) is None:
+            raise ValueError("Vehicle has no front!")
+        # if (back_join := platoon_vehicles[self.join_idx - 1]) is None:
+        #     raise ValueError("Vehicle has no back!")
+        self.front_join = front_join
+        print("front", front_join)
+        _, self.back_join = topology.get_vehicle(front_join.back)
+        print("back", self.back_join)
+
+    def update(self, plexe, topology: Topology):
+        print("STATE: ", self.state)
+        if self.state == JoinManeuver.State.WAITING:
+            # at 1 second, let the joiner get closer to the platoon
+            topology = get_in_position(
+                plexe, self.vehicle.id, self.front_join.id, topology
+            )
+            self.state = JoinManeuver.State.GOING_TO_POSITION
+
+        elif self.state == JoinManeuver.State.GOING_TO_POSITION:
+            # when the distance of the joiner is small enough, let the others
+            # open a gap to let the joiner enter the platoon
+            if (
+                get_distance(plexe, self.vehicle.id, self.front_join.id)
+                < JOIN_DISTANCE + 1
+            ):
+                self.state = JoinManeuver.State.OPENING_GAP
+                topology = open_gap(
+                    plexe, self.back_join.id, self.vehicle.id, JOIN_DISTANCE, topology
+                )
+        elif self.state == JoinManeuver.State.OPENING_GAP:
+            # when the gap is large enough, complete the maneuver
+            if (
+                get_distance(plexe, self.back_join.id, self.front_join.id)
+                > 2 * JOIN_DISTANCE - 2
+            ):
+                self.state = JoinManeuver.State.COMPLETED
+                plexe.set_fixed_lane(self.vehicle.id, 0, safe=False)
+                plexe.set_active_controller(self.vehicle.id, CACC)
+                plexe.set_path_cacc_parameters(self.vehicle.id, distance=DISTANCE)
+                plexe.set_active_controller(self.back_join.id, CACC)
+                plexe.set_path_cacc_parameters(self.back_join.id, distance=DISTANCE)
+                topology.reset_leaders()
 
 
 def main(demo_mode, real_engine, setter=None):
@@ -55,36 +129,31 @@ def main(demo_mode, real_engine, setter=None):
     start_sumo("cfg/freeway.sumo.cfg", False)
     plexe = Plexe()
     step = 0
-    state = WAITING
-    topology = init_topology([N_VEHICLES])
+    topology = init_topology([N_VEHICLES, 1])
     print(topology)
 
-    join_pos = N_VEHICLES // 2
-    joiner = topology.platoons[0][1][join_pos]
-    print("GOT JOINER: ", joiner.id)
+    joiner = topology.platoons[1][1][0]
+    print("GOT JOINER: ", joiner)
+
+    mans: List[Maneuver] = []
 
     while running(demo_mode, step, 6000):
         # when reaching 60 seconds, reset the simulation when in demo_mode
         if demo_mode and step == 6000:
             start_sumo("cfg/freeway.sumo.cfg", True)
             step = 0
-            state = WAITING
+            # state = WAITING
             random.seed(1)
 
         traci.simulationStep()
 
+        if len(mans) > 0:
+            for man in mans:
+                man.update(plexe, topology)
+
         if step == 0:
             # create vehicles and track the joiner
             init_simulation(plexe, topology, real_engine)
-            vid = JOINER
-            add_platooning_vehicle(plexe, vid, 10, 1, SPEED, DISTANCE, real_engine)
-            joiner_vehicle = Vehicle(JOINER, front=FRONT_JOIN)
-            joiner_platoon_id = topology.create_platoon(JOINER)
-            topology.add_vehicle(joiner_platoon_id, joiner_vehicle)
-            plexe.set_fixed_lane(vid, 1, safe=False)
-            traci.vehicle.setSpeedMode(vid, 0)
-            plexe.set_active_controller(vid, ACC)
-            plexe.set_path_cacc_parameters(vid, distance=JOIN_DISTANCE)
             traci.gui.trackVehicle("View #0", joiner.id)
             traci.gui.setZoom("View #0", 20000)
 
@@ -93,26 +162,7 @@ def main(demo_mode, real_engine, setter=None):
             communicate(plexe, topology)
 
         if step == 100:
-            # at 1 second, let the joiner get closer to the platoon
-            topology = get_in_position(plexe, JOINER, FRONT_JOIN, topology)
-            state = GOING_TO_POSITION
-
-        if state == GOING_TO_POSITION and step > 0:
-            # when the distance of the joiner is small enough, let the others
-            # open a gap to let the joiner enter the platoon
-            if get_distance(plexe, JOINER, FRONT_JOIN) < JOIN_DISTANCE + 1:
-                state = OPENING_GAP
-                topology = open_gap(plexe, BEHIND_JOIN, JOINER, JOIN_DISTANCE, topology)
-        if state == OPENING_GAP:
-            # when the gap is large enough, complete the maneuver
-            if get_distance(plexe, BEHIND_JOIN, FRONT_JOIN) > 2 * JOIN_DISTANCE + 2:
-                state = COMPLETED
-                plexe.set_fixed_lane(JOINER, 0, safe=False)
-                plexe.set_active_controller(JOINER, CACC)
-                plexe.set_path_cacc_parameters(JOINER, distance=DISTANCE)
-                plexe.set_active_controller(BEHIND_JOIN, CACC)
-                plexe.set_path_cacc_parameters(BEHIND_JOIN, distance=DISTANCE)
-                topology.reset_leaders()
+            mans.append(JoinManeuver(joiner, 0, 4, topology))
 
         if real_engine and setter is not None:
             # if we are running with the dashboard, update its values
