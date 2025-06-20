@@ -1,16 +1,16 @@
 #!/usr/bin/env python
 import os
-import sys
 import random
+import sys
+from typing import List
 
+from maneuvers import LeaveManeuver, Maneuver
 from utils import (
     communicate,
-    get_distance,
-    start_sumo,
-    running,
     init_simulation,
     init_topology,
-    open_gap,
+    running,
+    start_sumo,
 )
 
 if "SUMO_HOME" in os.environ:
@@ -20,22 +20,8 @@ else:
     sys.exit("please declare environment variable 'SUMO_HOME'")
 
 import traci
-from plexe import Plexe, ACC, CACC, FAKED_CACC, RPM, GEAR, ACCELERATION, SPEED
 
-# vehicle length
-LENGTH = 4
-# inter-vehicle distance
-DISTANCE = 5
-# inter-vehicle distance when leaving space for joining
-JOIN_DISTANCE = DISTANCE * 2
-# cruising speed
-SPEED = 120 / 3.6
-
-# maneuver states:
-IN_PLATOON = 0
-OPENING_GAP = 1
-LEAVING = 2
-COMPLETED = 3
+from plexe import GEAR, RPM, Plexe
 
 # maneuver actors
 LEADER = "v.0"
@@ -52,21 +38,23 @@ def main(demo_mode, real_engine, setter=None):
     start_sumo("cfg/freeway.sumo.cfg", False)
     plexe = Plexe()
     step = 0
-    state = IN_PLATOON
     topology = init_topology([N_VEHICLES])
 
     leave_pos = 4
     leaver = topology.platoons[0].vehicles[leave_pos]
+    mans: List[Maneuver] = []
 
     while running(demo_mode, step, 6000):
         # when reaching 60 seconds, reset the simulation when in demo_mode
         if demo_mode and step == 6000:
             start_sumo("cfg/freeway.sumo.cfg", True)
             step = 0
-            state = IN_PLATOON
             random.seed(1)
 
         traci.simulationStep()
+        if len(mans) > 0:
+            for man in mans:
+                man.update(plexe, topology)
 
         if step == 0:
             # create vehicles and track the joiner
@@ -76,35 +64,8 @@ def main(demo_mode, real_engine, setter=None):
         if step % 10 == 1:
             # simulate vehicle communication every 100 ms
             communicate(plexe, topology)
-        if state == IN_PLATOON and step == 100:
-            # at 1 second, let the joiner get closer to the platoon
-            topology = open_gap(plexe, leaver.back, leaver.id, JOIN_DISTANCE, topology)
-            topology = open_gap(plexe, leaver.id, leaver.front, JOIN_DISTANCE, topology)
-            state = OPENING_GAP
-
-        if state == OPENING_GAP:
-            plexe.set_active_controller(leaver.id, ACC)
-            traci.vehicle.setSpeed(leaver.id, SPEED)
-            plexe.set_fixed_lane(leaver.id, 1, safe=False)
-            state = LEAVING
-
-        if state == LEAVING:
-            if get_distance(plexe, leaver.back, leaver.front) > (JOIN_DISTANCE + 1):
-                _, back = topology.get_vehicle(leaver.back)
-                _, front = topology.get_vehicle(leaver.back)
-                back.front = front.id
-                front.back = back.id
-
-                # swithing back control scheme
-                plexe.set_active_controller(back.id, CACC)
-                plexe.set_active_controller(front.id, CACC)
-                plexe.set_path_cacc_parameters(back.id, DISTANCE)
-                plexe.set_path_cacc_parameters(front.id, DISTANCE)
-
-                state = COMPLETED
-
-        if state == COMPLETED:
-            topology.reset_leaders()
+        if step == 100:
+            mans.append(LeaveManeuver(leaver, 1, topology))
 
         if real_engine and setter is not None:
             # if we are running with the dashboard, update its values

@@ -5,12 +5,13 @@ from utils import (
     Vehicle,
     get_in_position,
     DISTANCE,
+    SPEED,
     JOIN_DISTANCE,
 )
-
+import traci
 from enum import Enum
 from abc import abstractmethod
-from plexe import CACC
+from plexe import CACC, ACC
 
 
 class Maneuver:
@@ -40,10 +41,44 @@ class LeaveManeuver(Maneuver):
                 case LeaveManeuver.State.COMPLETED:
                     return "COMPLETED"
 
-    def __init__(
-        self, vehicle: Vehicle, target_platoon: int, join_idx: int, topology: Topology
-    ):
+    def __init__(self, vehicle: Vehicle, target_lane: int, topology: Topology):
         super().__init__(vehicle)
+        self.target_lane = target_lane
+        self.state = LeaveManeuver.State.IN_PLATOON
+
+    def update(self, plexe, topology: Topology):
+        match self.state:
+            case LeaveManeuver.State.IN_PLATOON:
+                topology = open_gap(
+                    plexe, self.vehicle.back, self.vehicle.id, JOIN_DISTANCE, topology
+                )
+                topology = open_gap(
+                    plexe, self.vehicle.id, self.vehicle.front, JOIN_DISTANCE, topology
+                )
+                self.state = LeaveManeuver.State.OPENING_GAP
+            case LeaveManeuver.State.OPENING_GAP:
+                plexe.set_active_controller(self.vehicle.id, ACC)
+                traci.vehicle.setSpeed(self.vehicle.id, SPEED)
+                plexe.set_fixed_lane(self.vehicle.id, 1, safe=False)
+                self.state = LeaveManeuver.State.LEAVING
+            case LeaveManeuver.State.LEAVING:
+                if get_distance(plexe, self.vehicle.back, self.vehicle.front) > (
+                    JOIN_DISTANCE + 1
+                ):
+                    _, back = topology.get_vehicle(self.vehicle.back)
+                    _, front = topology.get_vehicle(self.vehicle.back)
+                    back.front = front.id
+                    front.back = back.id
+
+                    # swithing back control scheme
+                    plexe.set_active_controller(back.id, CACC)
+                    plexe.set_active_controller(front.id, CACC)
+                    plexe.set_path_cacc_parameters(back.id, DISTANCE)
+                    plexe.set_path_cacc_parameters(front.id, DISTANCE)
+
+                self.state = LeaveManeuver.State.COMPLETED
+            case LeaveManeuver.State.COMPLETED:
+                topology.reset_leaders()
 
 
 class JoinManeuver(Maneuver):
@@ -74,10 +109,10 @@ class JoinManeuver(Maneuver):
         in_platoon, _ = topology.get_vehicle(self.vehicle.id)
         assert in_platoon != self.target_platoon
         platoon_vehicles = topology.platoons[self.target_platoon].vehicles
+
         if (front_join := platoon_vehicles[self.join_idx]) is None:
-            raise ValueError("Vehicle has no front!")
-        # if (back_join := platoon_vehicles[self.join_idx - 1]) is None:
-        #     raise ValueError("Vehicle has no back!")
+            raise ValueError("platoon has no vehicle at ", self.join_idx)
+
         self.front_join = front_join
         print("front", front_join)
         _, self.back_join = topology.get_vehicle(front_join.back)
@@ -85,34 +120,41 @@ class JoinManeuver(Maneuver):
 
     def update(self, plexe, topology: Topology):
         print("STATE: ", self.state)
-        if self.state == JoinManeuver.State.WAITING:
-            # at 1 second, let the joiner get closer to the platoon
-            topology = get_in_position(
-                plexe, self.vehicle.id, self.front_join.id, topology
-            )
-            self.state = JoinManeuver.State.GOING_TO_POSITION
-
-        elif self.state == JoinManeuver.State.GOING_TO_POSITION:
-            # when the distance of the joiner is small enough, let the others
-            # open a gap to let the joiner enter the platoon
-            if (
-                get_distance(plexe, self.vehicle.id, self.front_join.id)
-                < JOIN_DISTANCE + 1
-            ):
-                self.state = JoinManeuver.State.OPENING_GAP
-                topology = open_gap(
-                    plexe, self.back_join.id, self.vehicle.id, JOIN_DISTANCE, topology
+        match self.state:
+            case JoinManeuver.State.WAITING:
+                # at 1 second, let the joiner get closer to the platoon
+                topology = get_in_position(
+                    plexe, self.vehicle.id, self.front_join.id, topology
                 )
-        elif self.state == JoinManeuver.State.OPENING_GAP:
-            # when the gap is large enough, complete the maneuver
-            if (
-                get_distance(plexe, self.back_join.id, self.front_join.id)
-                > 2 * JOIN_DISTANCE - 2
-            ):
-                self.state = JoinManeuver.State.COMPLETED
-                plexe.set_fixed_lane(self.vehicle.id, 0, safe=False)
-                plexe.set_active_controller(self.vehicle.id, CACC)
-                plexe.set_path_cacc_parameters(self.vehicle.id, distance=DISTANCE)
-                plexe.set_active_controller(self.back_join.id, CACC)
-                plexe.set_path_cacc_parameters(self.back_join.id, distance=DISTANCE)
-                topology.reset_leaders()
+                self.state = JoinManeuver.State.GOING_TO_POSITION
+
+            case JoinManeuver.State.GOING_TO_POSITION:
+                # when the distance of the joiner is small enough, let the others
+                # open a gap to let the joiner enter the platoon
+                if (
+                    get_distance(plexe, self.vehicle.id, self.front_join.id)
+                    < JOIN_DISTANCE + 1
+                ):
+                    self.state = JoinManeuver.State.OPENING_GAP
+                    topology = open_gap(
+                        plexe,
+                        self.back_join.id,
+                        self.vehicle.id,
+                        JOIN_DISTANCE,
+                        topology,
+                    )
+            case JoinManeuver.State.OPENING_GAP:
+                # when the gap is large enough, complete the maneuver
+                if (
+                    get_distance(plexe, self.back_join.id, self.front_join.id)
+                    > 2 * JOIN_DISTANCE - 2
+                ):
+                    self.state = JoinManeuver.State.COMPLETED
+                    leader = topology.platoons[self.target_platoon].leader_id
+                    lane = traci.vehicle.getLaneIndex(leader)
+                    plexe.set_fixed_lane(self.vehicle.id, lane, safe=False)
+                    plexe.set_active_controller(self.vehicle.id, CACC)
+                    plexe.set_path_cacc_parameters(self.vehicle.id, distance=DISTANCE)
+                    plexe.set_active_controller(self.back_join.id, CACC)
+                    plexe.set_path_cacc_parameters(self.back_join.id, distance=DISTANCE)
+                    topology.reset_leaders()

@@ -41,21 +41,14 @@ class Platoon:
     def __init__(
         self,
         leader_id: str,
-        # lane: int,
         vehicles: List[Vehicle],
     ):
         self.leader_id = leader_id
         self.vehicles: List[Vehicle] = vehicles
-        # self.lane: int = lane
 
 
 class Topology:
     def __init__(self):
-        """
-        Each `platoon` has:
-        - a leader ID (str)
-        - a list of Vehicle objects
-        """
         self.platoons: Dict[int, Platoon] = {}
         """
          Temporary platoons have to be made to execute most maneuvers
