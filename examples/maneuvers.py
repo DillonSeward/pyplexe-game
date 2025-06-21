@@ -3,7 +3,6 @@ from utils import (
     open_gap,
     Topology,
     Vehicle,
-    get_in_position,
     DISTANCE,
     SPEED,
     JOIN_DISTANCE,
@@ -11,7 +10,7 @@ from utils import (
 import traci
 from enum import Enum
 from abc import abstractmethod
-from plexe import CACC, ACC
+from plexe import CACC, ACC, FAKED_CACC
 
 
 class Maneuver:
@@ -54,9 +53,10 @@ class LeaveManeuver(Maneuver):
         self.state = LeaveManeuver.State.IN_PLATOON
 
     def completed(self) -> bool:
-        self.state == LeaveManeuver.State.COMPLETED
+        return self.state == LeaveManeuver.State.COMPLETED
 
     def update(self, plexe, topology: Topology):
+        print("LEAVE STATE: ", self.state)
         match self.state:
             case LeaveManeuver.State.IN_PLATOON:
                 topology = open_gap(
@@ -135,14 +135,14 @@ class JoinManeuver(Maneuver):
         print("back", self.back_join)
 
     def completed(self) -> bool:
-        self.state == JoinManeuver.State.COMPLETED
+        return self.state == JoinManeuver.State.COMPLETED
 
     def update(self, plexe, topology: Topology):
-        print("STATE: ", self.state)
+        print("JOIN STATE: ", self.state)
         match self.state:
             case JoinManeuver.State.WAITING:
                 # at 1 second, let the joiner get closer to the platoon
-                topology = get_in_position(
+                topology = JoinManeuver.get_in_position(
                     plexe, self.vehicle.id, self.front_join.id, topology
                 )
                 self.state = JoinManeuver.State.GOING_TO_POSITION
@@ -184,3 +184,38 @@ class JoinManeuver(Maneuver):
 
             case JoinManeuver.State.COMPLETED:
                 pass
+
+    def get_in_position(plexe, jid: str, fid: str, topology: Topology):
+        """
+        Makes the joining vehicle get close to the join position. This is done by
+        changing the topology and setting the leader and the front vehicle for
+        the joiner. In addition, we increase the cruising speed and we switch to
+        the "fake" CACC, which uses a given GPS distance instead of the radar
+        distance to compute the control action
+        :param plexe: API instance
+        :param jid: id of the joiner
+        :param fid: id of the vehicle that will become the predecessor of the joiner
+        :param topology: the current platoon topology
+        :return: the modified topology
+        """
+        _, joiner = topology.get_vehicle(jid)
+        joiner.front = fid
+        joiner_lane = traci.vehicle.getLaneIndex(jid)
+        platoon_lane = traci.vehicle.getLaneIndex(fid)
+
+        target_lane = (
+            platoon_lane + 1 if joiner_lane > platoon_lane else platoon_lane - 1
+        )
+        plexe.set_fixed_lane(jid, target_lane, safe=False)
+        # grab lane of platoon and lane of joiner
+        # if joiner is below
+        # set lane of joiner to one below platoon
+        # if joiner is above
+        # set lane of joiner to one above plaroon
+        # traci.vehicle.setSpeedMode(joiner.id, 0)
+        # traci.vehicle.deactivateGapControl
+        traci.vehicle.setSpeed(joiner.id, SPEED + 45)
+        # plexe.set_active_controller(joiner.id, CACC)
+        plexe.set_active_controller(joiner.id, FAKED_CACC)
+        plexe.set_cc_desired_speed(joiner.id, SPEED + 55)
+        return topology

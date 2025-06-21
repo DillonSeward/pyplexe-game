@@ -36,10 +36,17 @@ def main(demo_mode, real_engine, setter=None):
     leaver = topology.platoons[0].vehicles[4]
     joiner = topology.platoons[1].vehicles[2]
     mans: List[Maneuver] = []
+    complete = False
 
     while running(demo_mode, step, SIMULATION_END_STEP):
         traci.simulationStep()
         if len(mans) > 0:
+            # for man in mans:
+            #     if man.completed() and not complete:
+            #         complete = True
+            #     else:
+            #         man.update(plexe, topology)
+
             for man in [m for m in mans if not m.completed()]:
                 man.update(plexe, topology)
 
@@ -55,12 +62,14 @@ def main(demo_mode, real_engine, setter=None):
             print("[main] Step 100: Vehicle v.4 will leave its platoon")
             mans.append(LeaveManeuver(leaver, 1, topology))
 
-        if step == 1500:
+        if step == 2000:
+            # if complete:
+            mans.append(JoinManeuver(leaver, 1, 2, topology))
             print("[main] Step 1500: Vehicle v.10 will join platoon 0 at index 2")
-            if topology.inPlatoon(joiner.id):
-                mans.append(LeaveManeuver(joiner, 1, topology))
+            # if topology.inPlatoon(joiner.id):
+            # mans.append(LeaveManeuver(joiner, 4, topology))
 
-            mans.append(JoinManeuver(joiner, 0, 4, topology))
+            # mans.append(JoinManeuver(joiner, 0, 4, topology))
 
         if real_engine and setter is not None:
             tracked_id = traci.gui.getTrackedVehicle("View #0")

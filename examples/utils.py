@@ -141,10 +141,9 @@ class Topology:
     def inPlatoon(self, vid: str) -> bool:
         try:
             platoon_id, _ = self.get_vehicle(vid)
-            platoon = self.platoons[platoon_id]
-            return len(platoon.vehicles) == 1
-        except ValueError:
             return True
+        except ValueError:
+            return False
 
 
 # Maybe something like this needs to be moved to Topology class??
@@ -174,7 +173,7 @@ def init_simulation(plexe, topology: Topology, real_engine=False):
             if platoon_id == 0:
                 lane = 0
             if platoon_id > 0:
-                lane = platoon_id + 0
+                lane = platoon_id + 1
             add_platooning_vehicle(
                 plexe,
                 v.id,
@@ -192,31 +191,6 @@ def init_simulation(plexe, topology: Topology, real_engine=False):
                 plexe.set_active_controller(v.id, ACC)
             else:
                 plexe.set_active_controller(v.id, CACC)
-
-
-def get_in_position(plexe, jid, fid, topology):
-    """
-    Makes the joining vehicle get close to the join position. This is done by
-    changing the topology and setting the leader and the front vehicle for
-    the joiner. In addition, we increase the cruising speed and we switch to
-    the "fake" CACC, which uses a given GPS distance instead of the radar
-    distance to compute the control action
-    :param plexe: API instance
-    :param jid: id of the joiner
-    :param fid: id of the vehicle that will become the predecessor of the joiner
-    :param topology: the current platoon topology
-    :return: the modified topology
-    """
-    _, joiner = topology.get_vehicle(jid)
-    joiner.front = fid
-    # grab lane of platoon and lane of joiner
-    # if joiner is below
-    # set lane of joiner to one below platoon
-    # if joiner is above
-    # set lane of joiner to one above plaroon
-    plexe.set_cc_desired_speed(joiner.id, SPEED + 15)
-    plexe.set_active_controller(joiner.id, FAKED_CACC)
-    return topology
 
 
 def open_gap(plexe, vid, jid, join_distance: int, topology: Topology) -> Topology:

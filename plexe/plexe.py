@@ -18,8 +18,9 @@ from os import environ, listdir
 from os.path import join, splitext, dirname
 from importlib import import_module
 import sys
-if 'SUMO_HOME' in environ:
-    tools = join(environ['SUMO_HOME'], 'tools')
+
+if "SUMO_HOME" in environ:
+    tools = join(environ["SUMO_HOME"], "tools")
     sys.path.append(tools)
 else:
     sys.exit("please declare environment variable 'SUMO_HOME'")
@@ -51,14 +52,13 @@ ENGINE_MODEL_REALISTIC = 0x01
 
 
 class Plexe(traci.StepListener):
-
     latest = [1, 1, 0]
     versions = {
-        'SUMO d1422e4780a': [0, 32, 0],
-        'SUMO 619df188ac3': [0, 32, 0],
-        'SUMO 1.0.1': [1, 0, 1],
-        'SUMO 1.1.0': [1, 1, 0],
-        'SUMO v1_1_0': [1, 1, 0]
+        "SUMO d1422e4780a": [0, 32, 0],
+        "SUMO 619df188ac3": [0, 32, 0],
+        "SUMO 1.0.1": [1, 0, 1],
+        "SUMO 1.1.0": [1, 1, 0],
+        "SUMO v1_1_0": [1, 1, 0],
     }
 
     def __init__(self):
@@ -92,7 +92,7 @@ class Plexe(traci.StepListener):
                     if version.startswith(v):
                         self.plexe = instance
                         break
-                if 'default' in versions:
+                if "default" in versions:
                     default_impl = instance
         if self.plexe is None:
             self.plexe = default_impl
@@ -284,8 +284,9 @@ class Plexe(traci.StepListener):
         """
         return self.plexe.set_platoon_size(vid, size)
 
-    def set_path_cacc_parameters(self, vid, distance=None, xi=None,
-                                 omega_n=None, c1=None):
+    def set_path_cacc_parameters(
+        self, vid, distance=None, xi=None, omega_n=None, c1=None
+    ):
         """
         Sets the parameters for the PATH CACC. If a parameter is set to None,
         it won't be set and it will keep its current value
@@ -295,8 +296,7 @@ class Plexe(traci.StepListener):
         :param omega_n: bandwidth
         :param c1: leader data weighting parameter
         """
-        return self.plexe.set_path_cacc_parameters(vid, distance, xi,
-                                                   omega_n, c1)
+        return self.plexe.set_path_cacc_parameters(vid, distance, xi, omega_n, c1)
 
     def set_ploeg_cacc_parameters(self, vid, k_p=None, k_d=None, headway=None):
         """
@@ -361,8 +361,7 @@ class Plexe(traci.StepListener):
         and speed fields set
         :param distance: distance to front vehicle in m
         """
-        return self.plexe.set_front_vehicle_fake_data(vid, vehicle_data,
-                                                      distance)
+        return self.plexe.set_front_vehicle_fake_data(vid, vehicle_data, distance)
 
     def set_acc_headway_time(self, vid, headway):
         """
