@@ -209,6 +209,11 @@ def get_in_position(plexe, jid, fid, topology):
     """
     _, joiner = topology.get_vehicle(jid)
     joiner.front = fid
+    # grab lane of platoon and lane of joiner
+    # if joiner is below
+    # set lane of joiner to one below platoon
+    # if joiner is above
+    # set lane of joiner to one above plaroon
     plexe.set_cc_desired_speed(joiner.id, SPEED + 15)
     plexe.set_active_controller(joiner.id, FAKED_CACC)
     return topology

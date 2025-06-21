@@ -59,7 +59,8 @@ def main(demo_mode, real_engine, setter=None):
         traci.simulationStep()
 
         if len(mans) > 0:
-            for man in mans:
+            # for man in mans:
+            for man in [m for m in mans if not m.completed()]:
                 man.update(plexe, topology)
 
         if step == 0:

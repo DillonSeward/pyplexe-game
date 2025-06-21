@@ -22,13 +22,18 @@ class Maneuver:
     def update(self, plexe, topology: Topology):
         pass
 
+    @abstractmethod
+    def completed(self) -> bool:
+        pass
+
 
 class LeaveManeuver(Maneuver):
     class State(Enum):
         IN_PLATOON = 0
         OPENING_GAP = 1
         LEAVING = 2
-        COMPLETED = 3
+        FINISH = 3
+        COMPLETED = 4
 
         def __str__(self):
             match self:
@@ -38,6 +43,8 @@ class LeaveManeuver(Maneuver):
                     return "OPENING_GAP"
                 case LeaveManeuver.State.LEAVING:
                     return "LEAVING"
+                case LeaveManeuver.State.FINISH:
+                    return "FINISH"
                 case LeaveManeuver.State.COMPLETED:
                     return "COMPLETED"
 
@@ -45,6 +52,9 @@ class LeaveManeuver(Maneuver):
         super().__init__(vehicle)
         self.target_lane = target_lane
         self.state = LeaveManeuver.State.IN_PLATOON
+
+    def completed(self) -> bool:
+        self.state == LeaveManeuver.State.COMPLETED
 
     def update(self, plexe, topology: Topology):
         match self.state:
@@ -76,9 +86,12 @@ class LeaveManeuver(Maneuver):
                     plexe.set_path_cacc_parameters(back.id, DISTANCE)
                     plexe.set_path_cacc_parameters(front.id, DISTANCE)
 
+                self.state = LeaveManeuver.State.FINISH
+            case LeaveManeuver.State.FINISH:
+                topology.reset_leaders()
                 self.state = LeaveManeuver.State.COMPLETED
             case LeaveManeuver.State.COMPLETED:
-                topology.reset_leaders()
+                pass
 
 
 class JoinManeuver(Maneuver):
@@ -86,7 +99,8 @@ class JoinManeuver(Maneuver):
         WAITING = 0
         OPENING_GAP = 1
         GOING_TO_POSITION = 2
-        COMPLETED = 3
+        FINISH = 3
+        COMPLETED = 4
 
         def __str__(self):
             match self:
@@ -96,6 +110,8 @@ class JoinManeuver(Maneuver):
                     return "OPENING_GAP"
                 case JoinManeuver.State.GOING_TO_POSITION:
                     return "GOING_TO_POSITION"
+                case JoinManeuver.State.FINISH:
+                    return "FINISH"
                 case JoinManeuver.State.COMPLETED:
                     return "COMPLETED"
 
@@ -117,6 +133,9 @@ class JoinManeuver(Maneuver):
         print("front", front_join)
         _, self.back_join = topology.get_vehicle(front_join.back)
         print("back", self.back_join)
+
+    def completed(self) -> bool:
+        self.state == JoinManeuver.State.COMPLETED
 
     def update(self, plexe, topology: Topology):
         print("STATE: ", self.state)
@@ -149,7 +168,7 @@ class JoinManeuver(Maneuver):
                     get_distance(plexe, self.back_join.id, self.front_join.id)
                     > 2 * JOIN_DISTANCE - 2
                 ):
-                    self.state = JoinManeuver.State.COMPLETED
+                    print("GAP OPENED ENOUGH")
                     leader = topology.platoons[self.target_platoon].leader_id
                     lane = traci.vehicle.getLaneIndex(leader)
                     plexe.set_fixed_lane(self.vehicle.id, lane, safe=False)
@@ -157,4 +176,11 @@ class JoinManeuver(Maneuver):
                     plexe.set_path_cacc_parameters(self.vehicle.id, distance=DISTANCE)
                     plexe.set_active_controller(self.back_join.id, CACC)
                     plexe.set_path_cacc_parameters(self.back_join.id, distance=DISTANCE)
-                    topology.reset_leaders()
+                    self.state = JoinManeuver.State.FINISH
+
+            case JoinManeuver.State.FINISH:
+                topology.reset_leaders()
+                self.state = JoinManeuver.State.COMPLETED
+
+            case JoinManeuver.State.COMPLETED:
+                pass

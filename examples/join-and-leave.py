@@ -9,8 +9,6 @@ from utils import (
     running,
     init_simulation,
     init_topology,
-    join,
-    leave,
 )
 
 if "SUMO_HOME" in os.environ:
@@ -20,6 +18,9 @@ else:
     sys.exit("please declare environment variable 'SUMO_HOME'")
 
 import traci
+from typing import List
+
+from maneuvers import LeaveManeuver, Maneuver, JoinManeuver
 from plexe import Plexe, RPM, GEAR, SPEED, ACCELERATION
 
 N_VEHICLES = 16
@@ -32,9 +33,15 @@ def main(demo_mode, real_engine, setter=None):
     plexe = Plexe()
     step = 0
     topology = init_topology([N_VEHICLES // 2, N_VEHICLES // 2])
+    leaver = topology.platoons[0].vehicles[4]
+    joiner = topology.platoons[1].vehicles[2]
+    mans: List[Maneuver] = []
 
     while running(demo_mode, step, SIMULATION_END_STEP):
         traci.simulationStep()
+        if len(mans) > 0:
+            for man in [m for m in mans if not m.completed()]:
+                man.update(plexe, topology)
 
         if step == 0:
             init_simulation(plexe, topology, real_engine)
@@ -46,11 +53,14 @@ def main(demo_mode, real_engine, setter=None):
 
         if step == 100:
             print("[main] Step 100: Vehicle v.4 will leave its platoon")
-            topology = leave(plexe, topology, "v.4", 1)
+            mans.append(LeaveManeuver(leaver, 1, topology))
 
         if step == 1500:
             print("[main] Step 1500: Vehicle v.10 will join platoon 0 at index 2")
-            topology = join(plexe, topology, "v.10", target_platoon=0, index=2)
+            if topology.inPlatoon(joiner.id):
+                mans.append(LeaveManeuver(joiner, 1, topology))
+
+            mans.append(JoinManeuver(joiner, 0, 4, topology))
 
         if real_engine and setter is not None:
             tracked_id = traci.gui.getTrackedVehicle("View #0")
