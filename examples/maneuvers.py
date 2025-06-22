@@ -207,15 +207,21 @@ class JoinManeuver(Maneuver):
             platoon_lane + 1 if joiner_lane > platoon_lane else platoon_lane - 1
         )
         plexe.set_fixed_lane(jid, target_lane, safe=False)
-        # grab lane of platoon and lane of joiner
-        # if joiner is below
-        # set lane of joiner to one below platoon
-        # if joiner is above
-        # set lane of joiner to one above plaroon
-        # traci.vehicle.setSpeedMode(joiner.id, 0)
-        # traci.vehicle.deactivateGapControl
-        traci.vehicle.setSpeed(joiner.id, SPEED + 45)
-        # plexe.set_active_controller(joiner.id, CACC)
+
+        # if joiner is ahead of gap
+        # slow down until its at the gap then match the speed
+        # of the platoon
+        # while distance > desired
+        ##### traci.vehicle.setSpeed(joiner.id, speed of platoon_lane - 15)
+        # traci.vehicle.setSpeed(joiner.id, speed of platoon_lane)
+        #
+        # if joiner is behind of gap
+        # speed up untils its at the gap then match the speed
+        # of the platoon
+        # while distance > desired
+        ##### traci.vehicle.setSpeed(joiner.id, speed of platoon_lane + 15)
+        # traci.vehicle.setSpeed(joiner.id, speed of platoon_lane)
+        #
         plexe.set_active_controller(joiner.id, FAKED_CACC)
-        plexe.set_cc_desired_speed(joiner.id, SPEED + 55)
+        plexe.set_cc_desired_speed(joiner.id, SPEED + 15)
         return topology
