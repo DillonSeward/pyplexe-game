@@ -88,7 +88,9 @@ class LeaveManeuver(Maneuver):
 
                 self.state = LeaveManeuver.State.FINISH
             case LeaveManeuver.State.FINISH:
+                # topology.remove_vehicle(self.vehicle.id)
                 topology.reset_leaders()
+                print(topology)
                 self.state = LeaveManeuver.State.COMPLETED
             case LeaveManeuver.State.COMPLETED:
                 pass
@@ -140,12 +142,14 @@ class JoinManeuver(Maneuver):
     def update(self, plexe, topology: Topology):
         print("JOIN STATE: ", self.state)
         print(plexe.get_active_controller(self.vehicle.id))
+        print(self.vehicle.front)
         match self.state:
             case JoinManeuver.State.WAITING:
                 # at 1 second, let the joiner get closer to the platoon
                 topology = JoinManeuver.get_in_position(
                     plexe, self.vehicle.id, self.front_join.id, topology
                 )
+                print(topology)
                 self.state = JoinManeuver.State.GOING_TO_POSITION
 
             case JoinManeuver.State.GOING_TO_POSITION:
@@ -223,6 +227,10 @@ class JoinManeuver(Maneuver):
         ##### traci.vehicle.setSpeed(joiner.id, speed of platoon_lane + 15)
         # traci.vehicle.setSpeed(joiner.id, speed of platoon_lane)
         #
-        plexe.set_cc_desired_speed(joiner.id, SPEED + 15)
+        print(
+            "--------------------------------------------------------------------------------"
+        )
+        print("joiner.front is: ", joiner.front)
+        plexe.set_cc_desired_speed(joiner.id, traci.vehicle.getSpeed(joiner.front) + 15)
         plexe.set_active_controller(joiner.id, FAKED_CACC)
         return topology
