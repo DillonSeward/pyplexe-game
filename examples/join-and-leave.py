@@ -64,7 +64,7 @@ def main(demo_mode, real_engine, setter=None):
 
         if step == 2000:
             # if complete:
-            mans.append(JoinManeuver(leaver, 1, 2, topology))
+            mans.append(JoinManeuver(leaver, 1, 4, topology))
             print("[main] Step 1500: Vehicle v.10 will join platoon 0 at index 2")
             # if topology.inPlatoon(joiner.id):
             # mans.append(LeaveManeuver(joiner, 4, topology))

@@ -139,6 +139,7 @@ class JoinManeuver(Maneuver):
 
     def update(self, plexe, topology: Topology):
         print("JOIN STATE: ", self.state)
+        print(plexe.get_active_controller(self.vehicle.id))
         match self.state:
             case JoinManeuver.State.WAITING:
                 # at 1 second, let the joiner get closer to the platoon
@@ -166,7 +167,7 @@ class JoinManeuver(Maneuver):
                 # when the gap is large enough, complete the maneuver
                 if (
                     get_distance(plexe, self.back_join.id, self.front_join.id)
-                    > 2 * JOIN_DISTANCE - 2
+                    > 2 * JOIN_DISTANCE - 4
                 ):
                     print("GAP OPENED ENOUGH")
                     leader = topology.platoons[self.target_platoon].leader_id
@@ -222,6 +223,6 @@ class JoinManeuver(Maneuver):
         ##### traci.vehicle.setSpeed(joiner.id, speed of platoon_lane + 15)
         # traci.vehicle.setSpeed(joiner.id, speed of platoon_lane)
         #
-        plexe.set_active_controller(joiner.id, FAKED_CACC)
         plexe.set_cc_desired_speed(joiner.id, SPEED + 15)
+        plexe.set_active_controller(joiner.id, FAKED_CACC)
         return topology

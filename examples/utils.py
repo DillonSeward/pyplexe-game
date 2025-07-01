@@ -173,7 +173,7 @@ def init_simulation(plexe, topology: Topology, real_engine=False):
             if platoon_id == 0:
                 lane = 0
             if platoon_id > 0:
-                lane = platoon_id + 1
+                lane = platoon_id + 2
             add_platooning_vehicle(
                 plexe,
                 v.id,
