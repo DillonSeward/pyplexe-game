@@ -68,7 +68,8 @@ class LeaveManeuver(Maneuver):
                 self.state = LeaveManeuver.State.OPENING_GAP
             case LeaveManeuver.State.OPENING_GAP:
                 plexe.set_active_controller(self.vehicle.id, ACC)
-                traci.vehicle.setSpeed(self.vehicle.id, SPEED)
+                # traci.vehicle.setSpeed(self.vehicle.id, SPEED)
+                plexe.set_cc_desired_speed(self.vehicle.id, SPEED)
                 plexe.set_fixed_lane(self.vehicle.id, 1, safe=False)
                 self.state = LeaveManeuver.State.LEAVING
             case LeaveManeuver.State.LEAVING:
